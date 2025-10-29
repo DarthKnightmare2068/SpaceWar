@@ -1,0 +1,17 @@
+<Project>
+  <PropertyGroup>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <None Include="**/*.shader" />
+    <None Include="Library/**/*" />
+    <None Include="Packages/**/*" />
+    <None Include="Temp/**/*" />
+    <None Include="Logs/**/*" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Compile Include="Assets/Script/**/*.cs" />
+  </ItemGroup>
+</Project> 
