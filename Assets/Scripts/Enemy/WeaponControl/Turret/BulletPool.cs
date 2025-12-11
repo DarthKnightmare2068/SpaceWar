@@ -9,11 +9,10 @@ public class BulletPool : MonoBehaviour
     [SerializeField] private GameObject bulletPrefab;
     [SerializeField] private int poolSize = 100;
     
-    // Dictionary to store different lifetime values for different projectile types
     private Dictionary<string, float> projectileLifetimes = new Dictionary<string, float>();
     private Queue<GameObject> bulletPool = new Queue<GameObject>();
     private int activeBullets = 0;
-    public float bulletLifetime = 5f; // Set in Inspector for all turret bullets
+    public float bulletLifetime = 5f;
 
     private void Awake()
     {
@@ -22,14 +21,12 @@ public class BulletPool : MonoBehaviour
 
     private void Start()
     {
-        // Populate the pool with inactive bullets
         for(int i = 0; i < poolSize; i++)
         {
             CreateNewBullet();
         }
     }
 
-    // Method to register a projectile type with its lifetime
     public void RegisterProjectileType(string type, float lifetime)
     {
         if (!projectileLifetimes.ContainsKey(type))
@@ -47,7 +44,7 @@ public class BulletPool : MonoBehaviour
         if (bulletPrefab != null)
         {
             GameObject bullet = Instantiate(bulletPrefab);
-            bullet.tag = "Bullet"; // Only enemy bullets are pooled
+            bullet.tag = "Bullet";
             bullet.layer = LayerMask.NameToLayer("Bullet");
             bullet.SetActive(false);
             bulletPool.Enqueue(bullet);
@@ -76,7 +73,6 @@ public class BulletPool : MonoBehaviour
                 }
                 else
                 {
-                    // Always ensure a lifetime for all bullets
                     StartCoroutine(DestroyBulletAfterLifetime(bullet, bulletLifetime));
                 }
             }
@@ -122,13 +118,11 @@ public class BulletPool : MonoBehaviour
     {
         if (bullet != null && bullet.CompareTag("Bullet"))
         {
-            // Disable trail if present
             TrailRenderer trail = bullet.GetComponent<TrailRenderer>();
             if (trail != null)
             {
                 trail.Clear();
             }
-            // Reset velocity
             Rigidbody rb = bullet.GetComponent<Rigidbody>();
             if (rb != null)
             {
@@ -153,7 +147,6 @@ public class BulletPool : MonoBehaviour
         yield return new WaitForSeconds(lifetime);
         if (bullet != null && bullet.activeInHierarchy && bullet.CompareTag("Bullet"))
         {
-            Debug.Log($"Returning bullet {bullet.name} after {lifetime} seconds");
             ReturnBullet(bullet);
         }
     }

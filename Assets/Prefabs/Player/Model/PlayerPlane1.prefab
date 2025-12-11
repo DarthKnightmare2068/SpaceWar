@@ -15417,7 +15417,7 @@ MonoBehaviour:
     m_Bits: 1
   machineGunFireRate: 0.1
   maxBullets: 1234
-  isInfinite: 1
+  isInfinite: 0
   currentBullets: 0
   isReloading: 0
   reloadTime: 2

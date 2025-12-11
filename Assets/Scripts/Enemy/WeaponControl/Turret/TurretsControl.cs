@@ -5,47 +5,54 @@ using UnityEngine;
 public class TurretControl : MonoBehaviour
 {
     [SerializeField]
-    Transform body; // Reference to the turret body
+    Transform body;
     [SerializeField]
-    Transform joint; // Reference to the turret joint
+    Transform joint;
     [SerializeField]
-    Transform gunBarrel; // Reference to the turret gun barrel
-    private float fireRate = 0.1f; // This will be overwritten by WeaponDmgControl
-    private float nextFire = 0f; // Tracks when the turret can fire next
+    Transform gunBarrel;
+    private float fireRate = 0.1f;
+    private float nextFire = 0f;
 
-    public List<Transform> turretSpawnPoints = new List<Transform>(); // List of spawn points
+    public List<Transform> turretSpawnPoints = new List<Transform>();
 
-    public float maxRotationSpeed = 5.0f; // Adjust the rotation speed as needed
+    public float maxRotationSpeed = 5.0f;
     Vector3 directionToEnemy;
 
-    private float damage = 20f; // Default damage value if not set externally
-    private int spawnIndex = 0; // Persistently cycle through spawn points
+    private float damage = 20f;
+    private int spawnIndex = 0;
 
-    // HP logic
     public int maxHP;
     public int currentHP;
 
-    // Reference to health bar
     private WeaponHealthBar healthBar;
 
     private bool trackPlayerInstantly;
     public void SetTrackingMode(bool instant) { trackPlayerInstantly = instant; }
 
+    private WeaponDmgControl cachedDmgControl;
+    private TurretsManager cachedManager;
+
     private void Awake()
     {
-        // currentHP will be set by TurretsManager
-
-        // Initialize from WeaponDmgControl
-        WeaponDmgControl dmgControl = FindObjectOfType<WeaponDmgControl>();
-        if (dmgControl != null)
+        cachedDmgControl = GetComponentInParent<WeaponDmgControl>();
+        if (cachedDmgControl == null)
         {
-            damage = dmgControl.GetBulletDamage();
-            fireRate = dmgControl.GetTurretFireRate();
+            cachedDmgControl = FindObjectOfType<WeaponDmgControl>();
+        }
+        
+        cachedManager = GetComponentInParent<TurretsManager>();
+        if (cachedManager == null)
+        {
+            cachedManager = FindObjectOfType<TurretsManager>();
+        }
+
+        if (cachedDmgControl != null)
+        {
+            damage = cachedDmgControl.GetBulletDamage();
+            fireRate = cachedDmgControl.GetTurretFireRate();
         }
         else
         {
-            // Fallback values if manager not found
-            Debug.LogWarning("WeaponDmgControl not found. Using default values for TurretControl.");
             damage = 20f;
             fireRate = 0.1f;
         }
@@ -53,24 +60,13 @@ public class TurretControl : MonoBehaviour
 
     private void Start()
     {
-        // Find the health bar component
         healthBar = GetComponentInChildren<WeaponHealthBar>();
-        if (healthBar == null)
-        {
-            Debug.LogWarning($"[TurretControl] {gameObject.name}: No WeaponHealthBar found in children!");
-        }
-        else
-        {
-            Debug.Log($"[TurretControl] {gameObject.name}: Found WeaponHealthBar: {healthBar.name}");
-        }
     }
 
     public void TakeDamage(int amount)
     {
-        Debug.Log($"[TurretControl] {gameObject.name}: Taking {amount} damage. HP: {currentHP} -> {currentHP - amount}");
         currentHP -= amount;
         
-        // Notify health bar of damage
         if (healthBar != null)
         {
             healthBar.SetHealth(currentHP, maxHP);
@@ -80,61 +76,42 @@ public class TurretControl : MonoBehaviour
         {
             currentHP = 0;
             
-            // Play VFX from TurretsManager and call WeaponDmgControl for revive
-            WeaponDmgControl dmgControl = FindObjectOfType<WeaponDmgControl>();
-            if (dmgControl != null)
+            if (cachedDmgControl != null)
             {
-                TurretsManager manager = FindObjectOfType<TurretsManager>();
-                if (manager != null && manager.turretDestroyedVFX != null)
+                if (cachedManager != null && cachedManager.turretDestroyedVFX != null)
                 {
-                    var vfx = Instantiate(manager.turretDestroyedVFX, transform.position + Vector3.up * 1f, Quaternion.identity);
-                    // Auto-destroy VFX after duration
+                    var vfx = Instantiate(cachedManager.turretDestroyedVFX, transform.position + Vector3.up * 1f, Quaternion.identity);
                     float duration = 2f;
                     var ps = vfx.GetComponent<ParticleSystem>();
                     if (ps != null) duration = ps.main.duration;
                     Destroy(vfx, duration);
-                    Debug.Log($"Turret destroyed VFX played at {transform.position + Vector3.up * 1f} for {gameObject.name}");
                 }
-                dmgControl.OnTurretDestroyed();
+                cachedDmgControl.OnTurretDestroyed();
             }
-            // Add turret death logic here (disable, play animation, etc.)
             gameObject.SetActive(false);
         }
     }
 
-    // Optionally, allow setting damage from outside (e.g., from WeaponDmgControl)
     public void SetBulletDamage(float newDamage)
     {
         damage = newDamage;
     }
 
-    void Update()
-    {
-        if (!gameObject.activeInHierarchy) return; // Prevent logic if turret is inactive
-        // ... existing Update logic ...
-    }
-
-    // Ensure no firing/rotation logic runs if inactive
     public void ControlTurret(Transform enemy, float howCloseToEnemy)
     {
         if (!gameObject.activeInHierarchy) return;
         if(enemy != null)
         {
-            // Get the direction to the enemy
             directionToEnemy = enemy.position - gunBarrel.position;
             float distanceToEnemy = Vector3.Distance(gunBarrel.position, enemy.position);
 
-            // Check if the enemy is close enough to fire
             if(distanceToEnemy < howCloseToEnemy)
             {
-                // Calculate the rotation to look at the enemy
                 Quaternion targetRotation = Quaternion.LookRotation(directionToEnemy);
 
-                // Lock position along the z-axis
                 Vector3 newPosition = new Vector3(joint.position.x, joint.position.y, joint.position.z);
                 joint.position = newPosition;
 
-                // Lock rotation along the x and z axes and only rotate around the y-axis
                 Quaternion finalRotation = Quaternion.Euler(targetRotation.eulerAngles.x, targetRotation.eulerAngles.y, 90);
                 if (trackPlayerInstantly)
                 {
@@ -147,20 +124,14 @@ public class TurretControl : MonoBehaviour
                     body.rotation = Quaternion.Slerp(body.rotation, Quaternion.Euler(0, targetRotation.eulerAngles.y, 0), maxRotationSpeed * Time.deltaTime);
                 }
 
-                // Make the gun barrel face the enemy
                 gunBarrel.LookAt(enemy.position);
 
-                // Fire if the current time is greater than or equal to the next allowed fire time
                 if(Time.time >= nextFire)
                 {
-                    nextFire = Time.time + fireRate; // Set the next allowed fire time
-                    Shoot(); // Fire the bullet
+                    nextFire = Time.time + fireRate;
+                    Shoot();
                 }
             }
-        }
-        else
-        {
-            // Optionally, reset or idle rotation here if needed
         }
     }
 
@@ -172,7 +143,6 @@ public class TurretControl : MonoBehaviour
 
         Transform spawnPoint = turretSpawnPoints[spawnIndex];
 
-        // Get a bullet from the bullet pool with the "Turret" type
         GameObject bulletObj = BulletPool.Instance.GetBullet("Turret");
 
         if(bulletObj != null)
@@ -181,39 +151,32 @@ public class TurretControl : MonoBehaviour
             bulletObj.transform.position = spawnPoint.position;
             bulletObj.transform.rotation = Quaternion.LookRotation(gunBarrel.forward);
             
-            // Add or get BulletDamage component
             BulletDamage bulletDamageComponent = bulletObj.GetComponent<BulletDamage>();
             if (bulletDamageComponent == null)
             {
                 bulletDamageComponent = bulletObj.AddComponent<BulletDamage>();
             }
 
-            // Use the local damage value (float)
             bulletDamageComponent.Initialize(damage, this);
 
             Rigidbody bulletRb = bulletObj.GetComponent<Rigidbody>();
             if (bulletRb != null)
             {
-                // Get bulletSpeed from TurretsManager
-                TurretsManager manager = FindObjectOfType<TurretsManager>();
-                float speed = manager != null ? manager.bulletSpeed : 100f;
+                float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
                 bulletRb.velocity = gunBarrel.forward * speed;
             }
         }
 
-        // Cycle through spawn points.
         spawnIndex = (spawnIndex + 1) % turretSpawnPoints.Count;
     }
 
     void OnDisable()
     {
-        // Stop all firing coroutines or timers when disabled
         StopAllCoroutines();
         CancelInvoke();
     }
 }
 
-// Component to handle bullet damage
 public class BulletDamage : MonoBehaviour
 {
     private float damage;
@@ -234,7 +197,6 @@ public class BulletDamage : MonoBehaviour
             {
                 playerStats.TakeDamage((int)damage);
             }
-            // Return bullet to pool immediately after hitting
             if (BulletPool.Instance != null)
             {
                 BulletPool.Instance.ReturnBullet(gameObject);
@@ -242,7 +204,6 @@ public class BulletDamage : MonoBehaviour
         }
         else if (other.CompareTag("Enemy"))
         {
-            // Return bullet to pool for other collisions
             if (BulletPool.Instance != null)
             {
                 BulletPool.Instance.ReturnBullet(gameObject);
@@ -262,7 +223,6 @@ public class BulletDamage : MonoBehaviour
         }
         else
         {
-            // Return bullet to pool for other collisions
             if (BulletPool.Instance != null)
             {
                 BulletPool.Instance.ReturnBullet(gameObject);

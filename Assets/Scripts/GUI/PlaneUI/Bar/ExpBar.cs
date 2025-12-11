@@ -8,12 +8,13 @@ public class ExpBar : MonoBehaviour
     public Slider expSlider;
     public TextMeshProUGUI levelText;
 
-    // This will hold the reference to the player's level system
     private LevelUpSystem levelUpSystem;
+    
+    private float searchTimer = 0f;
+    private const float SEARCH_INTERVAL = 1f;
 
     void Start()
     {
-        // Find components on this GameObject if not assigned in the Inspector
         if (expSlider == null)
         {
             expSlider = GetComponent<Slider>();
@@ -23,22 +24,23 @@ public class ExpBar : MonoBehaviour
             levelText = GetComponentInChildren<TextMeshProUGUI>();
         }
 
-        // Attempt to find the LevelUpSystem at the start
         FindLevelUpSystem();
     }
 
     void Update()
     {
-        // Continuously check for the LevelUpSystem in case it's not available at Start.
         if (levelUpSystem == null)
         {
-            FindLevelUpSystem();
+            searchTimer += Time.deltaTime;
+            if (searchTimer >= SEARCH_INTERVAL)
+            {
+                searchTimer = 0f;
+                FindLevelUpSystem();
+            }
         }
 
-        // If we have a valid reference, update the UI.
         if (levelUpSystem != null)
         {
-            // Update the experience slider's value directly.
             if (expSlider != null)
             {
                 if (levelUpSystem.IsMaxLevel)
@@ -51,7 +53,6 @@ public class ExpBar : MonoBehaviour
                 }
             }
 
-            // Update the level text.
             if (levelText != null)
             {
                 if (levelUpSystem.IsMaxLevel)
@@ -64,7 +65,7 @@ public class ExpBar : MonoBehaviour
                 }
             }
         }
-        else // If no LevelUpSystem is found, set the bar to empty.
+        else
         {
             if (expSlider != null)
             {
@@ -79,11 +80,12 @@ public class ExpBar : MonoBehaviour
 
     void FindLevelUpSystem()
     {
-        // The LevelUpSystem component is in the scene, so we can find it.
-        levelUpSystem = FindObjectOfType<LevelUpSystem>();
-        if (levelUpSystem != null)
+        if (GameManager.Instance != null && GameManager.Instance.levelUpSystem != null)
         {
-            Debug.Log("[ExpBar] Successfully connected to LevelUpSystem.");
+            levelUpSystem = GameManager.Instance.levelUpSystem;
+            return;
         }
+        
+        levelUpSystem = FindObjectOfType<LevelUpSystem>();
     }
 }

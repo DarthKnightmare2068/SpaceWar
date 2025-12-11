@@ -13,13 +13,11 @@ public class SpeedDisplay : MonoBehaviour
 
     void Start()
     {
-        // Try to find the player immediately
         FindPlayer();
     }
 
     void Update()
     {
-        // Try to find player if not found yet
         if(currentPlayer == null)
         {
             FindPlayer();
@@ -36,24 +34,20 @@ public class SpeedDisplay : MonoBehaviour
 
     void FindPlayer()
     {
-        // Try to find player by tag first
         GameObject player = GameObject.FindGameObjectWithTag("Player");
         if(player != null)
         {
             currentPlayer = player.GetComponent<PlaneControl>();
             if(currentPlayer != null)
             {
-                Debug.Log("SpeedDisplay: Found player with PlaneControl component");
                 return;
             }
         }
 
-        // If not found by tag, try to find by component
-        PlaneControl [] planeControls = FindObjectsOfType<PlaneControl>();
+        PlaneControl[] planeControls = FindObjectsOfType<PlaneControl>();
         if(planeControls.Length > 0)
         {
-            currentPlayer = planeControls [0];
-            Debug.Log("SpeedDisplay: Found player by PlaneControl component");
+            currentPlayer = planeControls[0];
         }
     }
 

@@ -17,7 +17,7 @@ public class WeaponHealthBar : MonoBehaviour
     [Header("Fade Settings")]
     public float hideDelay = 3f;
     public float fadeDuration = 0.5f;
-    public bool isFaded = false; // If true, enable fade logic. If false, bar is always visible.
+    public bool isFaded = false;
 
     private int maxHP;
     private int currentHP;
@@ -28,10 +28,14 @@ public class WeaponHealthBar : MonoBehaviour
     private float lastDamageTime = -100f;
     private CanvasGroup canvasGroup;
 
-    // Reference to TurretControl or SmallCanonControl if this bar is for a weapon
     private TurretControl turretControl;
     private SmallCanonControl cannonControl;
     private BigCanon bigCanonControl;
+
+    private float cameraCheckTimer = 0f;
+    private const float CAMERA_CHECK_INTERVAL = 1f;
+    private float playerSearchTimer = 0f;
+    private const float PLAYER_SEARCH_INTERVAL = 2f;
 
     void Awake()
     {
@@ -40,55 +44,40 @@ public class WeaponHealthBar : MonoBehaviour
         {
             canvasGroup = gameObject.AddComponent<CanvasGroup>();
         }
-        canvasGroup.alpha = 1f; // Start visible for testing
+        canvasGroup.alpha = 1f;
     }
 
     void Start()
     {
         FindPlayerAndCamera();
-        // Try to find TurretControl or SmallCanonControl in parent or self
         turretControl = GetComponentInParent<TurretControl>() ?? GetComponent<TurretControl>();
         cannonControl = GetComponentInParent<SmallCanonControl>() ?? GetComponent<SmallCanonControl>();
         bigCanonControl = GetComponentInParent<BigCanon>() ?? GetComponent<BigCanon>();
         
-        // Debug logging to check connections
-        Debug.Log($"[WeaponHealthBar] {gameObject.name}: Checking weapon connections...");
         if (turretControl != null)
         {
             maxHP = turretControl.maxHP;
-            Debug.Log($"[WeaponHealthBar] {gameObject.name}: ✅ Connected to TurretControl - MaxHP: {maxHP}");
         }
         else if (cannonControl != null)
         {
             maxHP = cannonControl.maxHP;
-            Debug.Log($"[WeaponHealthBar] {gameObject.name}: ✅ Connected to SmallCanonControl - MaxHP: {maxHP}");
         }
         else if (bigCanonControl != null)
         {
             maxHP = bigCanonControl.maxHP;
-            Debug.Log($"[WeaponHealthBar] {gameObject.name}: ✅ Connected to BigCanon - MaxHP: {maxHP}");
-        }
-        else
-        {
-            Debug.LogWarning($"[WeaponHealthBar] {gameObject.name}: ❌ No weapon control found! Check hierarchy.");
         }
         
-        Debug.Log($"[WeaponHealthBar] {gameObject.name}: isFaded = {isFaded}, CanvasGroup alpha = {canvasGroup.alpha}");
-        
-        // If connected to a weapon and has health, make sure the bar is visible
         if ((turretControl != null || cannonControl != null || bigCanonControl != null) && maxHP > 0)
         {
             if (canvasGroup != null)
             {
                 canvasGroup.alpha = 1f;
-                Debug.Log($"[WeaponHealthBar] {gameObject.name}: Making health bar visible for weapon with {maxHP} max HP");
             }
         }
     }
 
     void Update()
     {
-        // If connected to a turret or cannon, update HP from it
         if (turretControl != null)
         {
             currentHP = turretControl.currentHP;
@@ -105,7 +94,6 @@ public class WeaponHealthBar : MonoBehaviour
             maxHP = bigCanonControl.maxHP;
         }
 
-        // Safety checks
         if (maxHP <= 0) maxHP = 1;
         if (currentHP < 0) currentHP = 0;
 
@@ -123,26 +111,32 @@ public class WeaponHealthBar : MonoBehaviour
             healthText.text = $"{currentHP} / {maxHP}";
         }
 
-        // Check if player or camera has changed (e.g., respawned)
         if (playerTransform == null || activeCamera == null)
         {
-            FindPlayerAndCamera();
+            playerSearchTimer += Time.deltaTime;
+            if (playerSearchTimer >= PLAYER_SEARCH_INTERVAL)
+            {
+                playerSearchTimer = 0f;
+                FindPlayerAndCamera();
+            }
         }
         else
         {
-            // Check if the active camera has changed (front/back switch)
-            Camera newActiveCam = GetActivePlayerCamera(playerTransform);
-            if (newActiveCam != activeCamera)
-                activeCamera = newActiveCam;
+            cameraCheckTimer += Time.deltaTime;
+            if (cameraCheckTimer >= CAMERA_CHECK_INTERVAL)
+            {
+                cameraCheckTimer = 0f;
+                Camera newActiveCam = GetActivePlayerCamera(playerTransform);
+                if (newActiveCam != activeCamera)
+                    activeCamera = newActiveCam;
+            }
         }
 
-        // Handle fade in/out only if isFaded is true
         if (isFaded)
         {
             float timeSinceDamage = Time.time - lastDamageTime;
             if (timeSinceDamage < hideDelay)
             {
-                // Fade in
                 if (canvasGroup != null)
                 {
                     canvasGroup.alpha = Mathf.MoveTowards(canvasGroup.alpha, 1f, Time.deltaTime / fadeDuration);
@@ -150,7 +144,6 @@ public class WeaponHealthBar : MonoBehaviour
             }
             else
             {
-                // Fade out
                 if (canvasGroup != null)
                 {
                     canvasGroup.alpha = Mathf.MoveTowards(canvasGroup.alpha, 0f, Time.deltaTime / fadeDuration);
@@ -159,7 +152,6 @@ public class WeaponHealthBar : MonoBehaviour
         }
         else
         {
-            // Always visible
             if (canvasGroup != null)
                 canvasGroup.alpha = 1f;
         }
@@ -169,7 +161,6 @@ public class WeaponHealthBar : MonoBehaviour
     {
         if (activeCamera != null)
         {
-            // Billboard to camera
             transform.LookAt(transform.position + activeCamera.transform.rotation * Vector3.forward,
                              activeCamera.transform.rotation * Vector3.up);
         }
@@ -177,6 +168,13 @@ public class WeaponHealthBar : MonoBehaviour
 
     void FindPlayerAndCamera()
     {
+        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+        {
+            playerTransform = GameManager.Instance.currentPlayer.transform;
+            activeCamera = GetActivePlayerCamera(playerTransform);
+            return;
+        }
+        
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null)
         {
@@ -187,67 +185,28 @@ public class WeaponHealthBar : MonoBehaviour
 
     Camera GetActivePlayerCamera(Transform player)
     {
-        // Find all Camera components in player children
+        if (player == null) return Camera.main;
+        
         Camera[] cams = player.GetComponentsInChildren<Camera>(true);
         foreach (Camera cam in cams)
         {
             if (cam.enabled)
                 return cam;
         }
-        // Fallback: return first camera if none are enabled
         return cams.Length > 0 ? cams[0] : Camera.main;
     }
 
-    // Call this to update health from your weapon logic (still available for non-turret/cannon use)
     public void SetHealth(int current, int max)
     {
-        // Only reset timer if value changes
         if (current != currentHP)
         {
             lastDamageTime = Time.time;
-            Debug.Log($"[WeaponHealthBar] {gameObject.name}: Health updated - {current}/{max}, Timer reset");
-            
-            // Force the health bar to be visible when damage is taken
             if (canvasGroup != null)
             {
                 canvasGroup.alpha = 1f;
-                Debug.Log($"[WeaponHealthBar] {gameObject.name}: Forcing health bar visibility after damage");
             }
         }
         currentHP = current;
         maxHP = max;
-    }
-
-    // Debug method to force show the health bar
-    [ContextMenu("Force Show Health Bar")]
-    public void ForceShowHealthBar()
-    {
-        if (canvasGroup != null)
-        {
-            canvasGroup.alpha = 1f;
-            Debug.Log($"[WeaponHealthBar] {gameObject.name}: Force showing health bar");
-        }
-    }
-
-    // Debug method to check current status
-    [ContextMenu("Debug Health Bar Status")]
-    public void DebugHealthBarStatus()
-    {
-        Debug.Log($"[WeaponHealthBar] {gameObject.name}: === HEALTH BAR STATUS ===");
-        Debug.Log($"  Connected to TurretControl: {turretControl != null}");
-        Debug.Log($"  Connected to SmallCanonControl: {cannonControl != null}");
-        Debug.Log($"  Connected to BigCanon: {bigCanonControl != null}");
-        Debug.Log($"  Current HP: {currentHP}");
-        Debug.Log($"  Max HP: {maxHP}");
-        Debug.Log($"  Health Percent: {(maxHP > 0 ? (float)currentHP / maxHP : 0):F2}");
-        Debug.Log($"  isFaded: {isFaded}");
-        Debug.Log($"  CanvasGroup Alpha: {canvasGroup?.alpha:F2}");
-        Debug.Log($"  Last Damage Time: {lastDamageTime:F2}");
-        Debug.Log($"  Time Since Damage: {Time.time - lastDamageTime:F2}");
-        Debug.Log($"  Hide Delay: {hideDelay}");
-        Debug.Log($"  Normal Slider: {normalHealthBarSlider != null}");
-        Debug.Log($"  Ease Slider: {easeHealthBarSlider != null}");
-        Debug.Log($"  Health Text: {healthText != null}");
-        Debug.Log("=== END STATUS ===");
     }
 }

@@ -22,37 +22,41 @@ public class TurretsManager : MonoBehaviour
     [Header("Tracking Mode")]
     public bool trackPlayerInstantly = false;
 
-    // Internals
-    private float howCloseToPlayer; // This will be set from WeaponDmgControl
+    private float howCloseToPlayer;
     private List<Transform> players = new List<Transform>();
     private Dictionary<TurretControl, Transform> turretTargets = new Dictionary<TurretControl, Transform>();
 
-    // Backup refresh system for turret targeting
     private float backupRefreshTimer = 0f;
-    private const float BACKUP_REFRESH_INTERVAL = 1f; // Refresh every 1 second
+    private const float BACKUP_REFRESH_INTERVAL = 1f;
+
+    private float playerListUpdateTimer = 0f;
+    private const float PLAYER_LIST_UPDATE_INTERVAL = 0.5f;
+
+    private WeaponDmgControl cachedDmgControl;
 
     void Awake()
     {
-        // Always rebuild the turrets list from all children (active and inactive)
         turrets = new List<TurretControl>(GetComponentsInChildren<TurretControl>(true));
 
-        // Initialize from WeaponDmgControl
-        WeaponDmgControl dmgControl = FindObjectOfType<WeaponDmgControl>();
-        if (dmgControl != null)
+        cachedDmgControl = GetComponentInParent<WeaponDmgControl>();
+        if (cachedDmgControl == null)
         {
-            howCloseToPlayer = dmgControl.GetTurretFireRange();
+            cachedDmgControl = FindObjectOfType<WeaponDmgControl>();
+        }
+        
+        if (cachedDmgControl != null)
+        {
+            howCloseToPlayer = cachedDmgControl.GetTurretFireRange();
         }
         else
         {
-            howCloseToPlayer = 100f; // Fallback
-            Debug.LogWarning("WeaponDmgControl not found. Using default fire range for TurretManager.");
+            howCloseToPlayer = 100f;
         }
 
         SetAllTurretsHP();
         maxTurretCount = turrets.Count;
         currentTurretCount = maxTurretCount;
 
-        // Set tracking mode for all turrets at start
         foreach (var turret in turrets)
         {
             if (turret != null)
@@ -64,10 +68,16 @@ public class TurretsManager : MonoBehaviour
     {
         CleanTurretList();
         currentTurretCount = turrets.Count;
-        UpdatePlayersList();
+        
+        playerListUpdateTimer += Time.deltaTime;
+        if (playerListUpdateTimer >= PLAYER_LIST_UPDATE_INTERVAL)
+        {
+            playerListUpdateTimer = 0f;
+            UpdatePlayersList();
+        }
+        
         AssignTurretsToPlayers();
 
-        // Backup refresh system - force complete targeting refresh every 1 second
         backupRefreshTimer += Time.deltaTime;
         if (backupRefreshTimer >= BACKUP_REFRESH_INTERVAL)
         {
@@ -75,7 +85,6 @@ public class TurretsManager : MonoBehaviour
             ForceRefreshAllTurretTargeting();
         }
 
-        // Sync tracking mode for all turrets every frame (in case toggled at runtime)
         foreach (var turret in turrets)
         {
             if (turret != null)
@@ -105,14 +114,12 @@ public class TurretsManager : MonoBehaviour
         players.Clear();
         foreach(var playerObj in GameObject.FindGameObjectsWithTag("Player"))
         {
-            // Skip any dead planes
             var stats = playerObj.GetComponent<PlaneStats>();
             if(stats != null && stats.CurrentHP <= 0)
             {
                 continue;
             }
 
-            // Only add if within detection range
             float dist = Vector3.Distance(transform.position, playerObj.transform.position);
             if(dist < howCloseToPlayer)
             {
@@ -123,14 +130,11 @@ public class TurretsManager : MonoBehaviour
 
     void AssignTurretsToPlayers()
     {
-        // Clear previous assignments
         turretTargets.Clear();
         var assignedTurrets = new HashSet<TurretControl>();
 
-        // For each player, assign the N closest turrets
         foreach (var player in players)
         {
-            // Sort turrets by distance to this player
             List<TurretControl> sortedTurrets = new List<TurretControl>(turrets);
             sortedTurrets.Sort((a, b) =>
             {
@@ -151,27 +155,20 @@ public class TurretsManager : MonoBehaviour
             }
         }
 
-        // Any turret not assigned to a player should not target anyone
         foreach (var turret in turrets)
         {
             if (turret == null) continue;
             if (!turretTargets.ContainsKey(turret))
             {
-                turret.ControlTurret(null, howCloseToPlayer); // Or implement idle behavior
+                turret.ControlTurret(null, howCloseToPlayer);
             }
         }
     }
 
-    /// <summary>
-    /// Backup method to force refresh all turret targeting every 1 second
-    /// This ensures turrets properly reset their targeting even if main system fails
-    /// </summary>
     private void ForceRefreshAllTurretTargeting()
     {
-        // Clear all current assignments
         turretTargets.Clear();
         
-        // Force all turrets to stop targeting (cancel aim)
         foreach (var turret in turrets)
         {
             if (turret != null && turret.gameObject.activeInHierarchy)
@@ -180,10 +177,7 @@ public class TurretsManager : MonoBehaviour
             }
         }
         
-        // Force immediate re-assignment
         UpdatePlayersList();
         AssignTurretsToPlayers();
-        
-        Debug.Log("[TurretsManager] Backup refresh: All turret targeting reset and reassigned");
     }
-} 
+}

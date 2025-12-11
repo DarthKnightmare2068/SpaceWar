@@ -6,20 +6,18 @@ using UnityEngine.SceneManagement;
 public class PauseUI : MonoBehaviour
 {
     [Header("UI References")]
-    public GameObject planeCanvas;      // Assign PlaneCanvas
-    public GameObject pauseCanvas;      // Assign PauseCanvas
-    public GameObject controlButtonSetUp; // Assign ControlTutorial (the control/tips panel)
-    public GameObject continueButton;   // Assign ContinueButton
-    public GameObject controlButton;    // Assign ControlButton
-    public GameObject returnButton;     // Assign ReturnButton
+    public GameObject planeCanvas;
+    public GameObject pauseCanvas;
+    public GameObject controlButtonSetUp;
+    public GameObject continueButton;
+    public GameObject controlButton;
+    public GameObject returnButton;
 
-    // Start is called before the first frame update
     void Start()
     {
-        pauseCanvas.SetActive(false); // Ensure PauseCanvas is off at start
+        pauseCanvas.SetActive(false);
     }
 
-    // Update is called once per frame
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.Escape))
@@ -41,7 +39,6 @@ public class PauseUI : MonoBehaviour
 
     public void ShowPause()
     {
-        Debug.Log("ShowPause called (Pause button or Escape pressed)");
         pauseCanvas.SetActive(true);
         planeCanvas.SetActive(false);
         controlButtonSetUp.SetActive(false);
@@ -53,7 +50,6 @@ public class PauseUI : MonoBehaviour
 
     public void ContinueGame()
     {
-        Debug.Log("ContinueGame called (Continue button pressed)");
         pauseCanvas.SetActive(false);
         planeCanvas.SetActive(true);
         controlButtonSetUp.SetActive(false);
@@ -62,7 +58,6 @@ public class PauseUI : MonoBehaviour
 
     public void ShowPauseMenu()
     {
-        Debug.Log("ShowPauseMenu called (Control button pressed)");
         controlButtonSetUp.SetActive(true);
         continueButton.SetActive(false);
         controlButton.SetActive(false);
@@ -71,7 +66,6 @@ public class PauseUI : MonoBehaviour
 
     public void BackToPause()
     {
-        Debug.Log("BackToPause called (Back button in ControlTutorial pressed)");
         controlButtonSetUp.SetActive(false);
         continueButton.SetActive(true);
         controlButton.SetActive(true);
@@ -80,8 +74,7 @@ public class PauseUI : MonoBehaviour
 
     public void ReturnToEnterGame()
     {
-        Debug.Log("ReturnToEnterGame called (Return button pressed)");
         Time.timeScale = 1f;
-        SceneManager.LoadScene("Enter Scene"); // Updated scene name
+        SceneManager.LoadScene("Enter Scene");
     }
 }

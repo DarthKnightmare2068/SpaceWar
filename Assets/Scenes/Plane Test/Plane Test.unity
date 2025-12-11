@@ -1087,7 +1087,7 @@ MonoBehaviour:
   explosionVFXDuration: 2
   reviveCD: {fileID: 8060836249070963326}
   levelUpSystem: {fileID: 314304968}
-  targetFPS: 120
+  targetFPS: 60
   enemyDestroyedClip: {fileID: 8300000, guid: a376938cd0d7b434dbc2c1c39066e71d, type: 3}
   enemyDestroyedVolume: 1
 --- !u!4 &314304967
@@ -1128,6 +1128,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   nextLvStatsScale: 1.11
+  enemyScanInterval: 2
 --- !u!114 &314304970
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1152,6 +1153,7 @@ MonoBehaviour:
   thrusterSoundVolume: 1
   respawnSound: {fileID: 8300000, guid: 6e396a94447fdb642b492da8831747c2, type: 3}
   respawnSoundVolume: 1
+  audioPoolSize: 10
 --- !u!114 &314304971
 MonoBehaviour:
   m_ObjectHideFlags: 0

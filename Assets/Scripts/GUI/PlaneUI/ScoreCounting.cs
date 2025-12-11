@@ -24,13 +24,11 @@ public class ScoreCounting : MonoBehaviour
         totalDamageDealt = 0f;
     }
 
-    /// <summary>Record damage dealt to enemies and update score.</summary>
     public void RecordDamageDealt(float damage)
     {
         if (damage <= 0)
             return;
         totalDamageDealt += damage;
-        Debug.Log($"[ScoreCounting] Dealt {damage} damage. Total damage: {totalDamageDealt}");
         onDamageDealt?.Invoke(totalDamageDealt);
     }
 

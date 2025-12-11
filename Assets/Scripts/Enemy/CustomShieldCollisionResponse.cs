@@ -38,10 +38,6 @@ namespace LuminaryLabs.HologramShieldShader
             shieldMaterial = shieldRenderer.material;
         }
 
-        void Start()
-        {
-        }
-
         void Update()
         {
             float currentTime = Time.time;

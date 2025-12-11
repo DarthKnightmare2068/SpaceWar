@@ -5,8 +5,8 @@ using TMPro;
 public class PlayerHealthBar : MonoBehaviour
 {
     [Header("UI Sliders")]
-    public Slider normalHealthBarSlider; // The main health bar (should be on the bottom in hierarchy)
-    public Slider easeHealthBarSlider;   // The "ease" bar (should be on top in hierarchy)
+    public Slider normalHealthBarSlider;
+    public Slider easeHealthBarSlider;
 
     [Header("UI Text (Optional)")]
     public TextMeshProUGUI healthText;
@@ -14,39 +14,40 @@ public class PlayerHealthBar : MonoBehaviour
     [Header("Animation Settings")]
     private float lerpSpeed = 0.05f;
 
-    // This will hold the reference to the player's stats
     private PlaneStats playerStats;
+    
+    private float playerSearchTimer = 0f;
+    private const float PLAYER_SEARCH_INTERVAL = 0.5f;
 
     void Start()
     {
-        // Attempt to find the player at the start
         FindPlayer();
     }
 
     void Update()
     {
-        // Continuously check for the player in case they don't exist at Start, or they respawn.
         if (playerStats == null || !playerStats.gameObject.activeInHierarchy)
         {
-            FindPlayer();
+            playerSearchTimer += Time.deltaTime;
+            if (playerSearchTimer >= PLAYER_SEARCH_INTERVAL)
+            {
+                playerSearchTimer = 0f;
+                FindPlayer();
+            }
         }
 
-        // If we have a valid player reference, update the UI.
         if (playerStats != null)
         {
-            // 1. Instantly update the Normal Health Bar's slider value by calculating the percentage directly.
             normalHealthBarSlider.value = (playerStats.MaxHP > 0) ? (playerStats.CurrentHP / (float)playerStats.MaxHP) : 0;
 
-            // 2. Animate the Ease Health Bar to catch up to the normal slider's new value.
             if (easeHealthBarSlider.value != normalHealthBarSlider.value)
             {
                 easeHealthBarSlider.value = Mathf.Lerp(easeHealthBarSlider.value, normalHealthBarSlider.value, lerpSpeed);
             }
 
-            // 3. Update the health text.
             UpdateHealthText(playerStats.CurrentHP, playerStats.MaxHP);
         }
-        else // If no player is found, set the health bar to empty.
+        else
         {
             normalHealthBarSlider.value = 0;
             easeHealthBarSlider.value = 0;
@@ -56,14 +57,19 @@ public class PlayerHealthBar : MonoBehaviour
 
     void FindPlayer()
     {
+        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+        {
+            playerStats = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
+            if (playerStats != null)
+            {
+                return;
+            }
+        }
+        
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null)
         {
             playerStats = playerObj.GetComponent<PlaneStats>();
-            if (playerStats != null)
-            {
-                Debug.Log("[PlayerHealthBar] Successfully connected to player's PlaneStats.");
-            }
         }
     }
 
@@ -74,4 +80,12 @@ public class PlayerHealthBar : MonoBehaviour
             healthText.text = $"HP: {Mathf.CeilToInt(current)} / {Mathf.CeilToInt(max)}";
         }
     }
-} 
+    
+    public void OnPlayerSpawned(GameObject player)
+    {
+        if (player != null)
+        {
+            playerStats = player.GetComponent<PlaneStats>();
+        }
+    }
+}

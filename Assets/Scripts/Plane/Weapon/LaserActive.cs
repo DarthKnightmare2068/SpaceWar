@@ -1,18 +1,17 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.VFX; // Re-add this for VisualEffect control
+using UnityEngine.VFX;
 
 public class LaserActive : MonoBehaviour
 {
     [Header("Laser Settings")]
-    public float laserFireRange = 100f; // Range for damage dealing
+    public float laserFireRange = 100f;
     public int laserDamage = 111;
-    public float fireTickInterval = 0.1f; // How often to apply damage while firing
-    public LayerMask shootableLayers; // Layers the laser can hit for damage
-    public float laserCooldown = 2f; // This will be dynamically calculated
+    public float fireTickInterval = 0.1f;
+    public LayerMask shootableLayers;
+    public float laserCooldown = 2f;
 
-    // Threshold/Energy system
     public int maxThreshold = 5;
     public int currentThreshold = 5;
     public int maxLevel = LevelUpSystem.MAX_LEVEL;
@@ -21,61 +20,84 @@ public class LaserActive : MonoBehaviour
     private float rechargeAccumulator = 0f;
 
     [Header("References")]
-    public GameObject laserVFXPrefab; // The prefab to spawn
-    public VisualEffect laserVisualScript; // The beam object containing the VisualEffect script
-    public PlayerWeaponManager weaponManager; // Reference to the weapon manager
-    public GameObject explosionVFXPrefab; // Explosion VFX to play at hit point
+    public GameObject laserVFXPrefab;
+    public VisualEffect laserVisualScript;
+    public PlayerWeaponManager weaponManager;
+    public GameObject explosionVFXPrefab;
 
-    // Public property for other scripts to read the beam's current visual length
     public float CurrentBeamLength { get; private set; }
 
     private PlaneStats playerPlane;
     private float tickTimer = 0f;
     private bool isFiring = false;
-    private GameObject activeLaserInstance; // To keep track of the spawned laser
-    private VisualEffect activeVFX; // Reference to the VFX component on the instance
-    private AudioSource loopingAudioSource; // For the looping laser sound
+    private GameObject activeLaserInstance;
+    private VisualEffect activeVFX;
+    private AudioSource laserAudioSource;
+    private bool audioSourceInitialized = false;
 
-    // Start is called once per frame
     void Start()
     {
-        CurrentBeamLength = laserFireRange; // Initialize to max range
+        CurrentBeamLength = laserFireRange;
 
-        // Ensure the VFX is off at game start
         if (laserVisualScript != null)
             laserVisualScript.gameObject.SetActive(false);
 
-        // Find the PlayerWeaponManager if not assigned
         if (weaponManager == null)
-            weaponManager = FindObjectOfType<PlayerWeaponManager>();
-
+            weaponManager = GetComponent<PlayerWeaponManager>();
         if (weaponManager == null)
-            Debug.LogError("[LaserActive] PlayerWeaponManager not found in scene!");
+            weaponManager = GetComponentInParent<PlayerWeaponManager>();
 
-        // Default shootableLayers to everything except the "Player" layer
         if (shootableLayers == 0)
         {
             shootableLayers = ~LayerMask.GetMask("Player");
         }
 
-        // Initialize threshold
         maxThreshold = 5;
         currentThreshold = maxThreshold;
         
-        // Try to find player stats - will be updated in Update if not found
         FindPlayerStats();
+        InitializeAudioSource();
     }
 
-    // Update is called once per frame
+    private void InitializeAudioSource()
+    {
+        if (audioSourceInitialized) return;
+        
+        if (laserAudioSource == null)
+        {
+            GameObject audioObj = new GameObject("LaserAudio");
+            audioObj.transform.SetParent(transform);
+            audioObj.transform.localPosition = Vector3.zero;
+            laserAudioSource = audioObj.AddComponent<AudioSource>();
+            laserAudioSource.loop = true;
+            laserAudioSource.playOnAwake = false;
+            laserAudioSource.spatialBlend = 0f;
+            
+            if (AudioSetting.Instance != null)
+            {
+                laserAudioSource.clip = AudioSetting.Instance.laserSound;
+                laserAudioSource.volume = AudioSetting.Instance.laserSFXVolume;
+            }
+        }
+        
+        audioSourceInitialized = true;
+    }
+
+    void OnDestroy()
+    {
+        if (laserAudioSource != null)
+        {
+            laserAudioSource.Stop();
+        }
+    }
+
     void Update()
     {
-        // Try to find player stats if not found
         if (playerPlane == null)
         {
             FindPlayerStats();
         }
         
-        // Recharge threshold when not firing and not at max
         if (!isFiring && currentThreshold < maxThreshold)
         {
             rechargeAccumulator += Time.deltaTime;
@@ -91,19 +113,16 @@ public class LaserActive : MonoBehaviour
         if (Input.GetKeyUp(KeyCode.E))
             StopFiring();
 
-        // Only allow firing if not forced to recharge full
         if (isFiring && currentThreshold > 0 && !mustRechargeFull)
         {
             fireTickAccumulator += Time.deltaTime;
             tickTimer += Time.deltaTime;
-            // Consume threshold every 1 second
             if (fireTickAccumulator >= 1f)
             {
                 currentThreshold = Mathf.Max(currentThreshold - 1, 0);
                 fireTickAccumulator = 0f;
                 if (currentThreshold == 0)
                 {
-                    // Out of energy, must recharge to full before firing again
                     mustRechargeFull = true;
                     StopFiring();
                 }
@@ -114,7 +133,6 @@ public class LaserActive : MonoBehaviour
                 FireLaser();
             }
         }
-        // If fully recharged, allow firing again
         if (mustRechargeFull && currentThreshold == maxThreshold)
         {
             mustRechargeFull = false;
@@ -123,7 +141,6 @@ public class LaserActive : MonoBehaviour
 
     private void FindPlayerStats()
     {
-        // Try multiple ways to find player stats
         if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
         {
             playerPlane = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
@@ -131,13 +148,11 @@ public class LaserActive : MonoBehaviour
         
         if (playerPlane == null)
         {
-            // Fallback: find any PlaneStats in scene
-            playerPlane = FindObjectOfType<PlaneStats>();
-        }
-        
-        if (playerPlane == null)
-        {
-            Debug.LogWarning("[LaserActive] Could not find playerPlane for damage calculation.");
+            playerPlane = GetComponent<PlaneStats>();
+            if (playerPlane == null)
+            {
+                playerPlane = GetComponentInParent<PlaneStats>();
+            }
         }
     }
 
@@ -145,33 +160,50 @@ public class LaserActive : MonoBehaviour
     {
         if (mustRechargeFull || currentThreshold == 0) return;
 
-        // Check if a target is in range before firing
         if (weaponManager != null && !weaponManager.IsTargetInRange(laserFireRange))
         {
-            return; // Not in range, do not fire
+            return;
         }
 
         isFiring = true;
         if (laserVFXPrefab != null && activeLaserInstance == null)
         {
-            // Instantiate the laser and parent it to this fire point
             activeLaserInstance = Instantiate(laserVFXPrefab, transform.position, transform.rotation, transform);
-            activeVFX = activeLaserInstance.GetComponent<VisualEffect>(); // Get the VFX component
+            activeVFX = activeLaserInstance.GetComponent<VisualEffect>();
         }
-        // If you want to use a pre-existing VisualEffect (not from the prefab), assign it to laserVisualScript in the inspector
         if (laserVisualScript != null)
             laserVisualScript.gameObject.SetActive(true);
 
-        // Play sound effect
-        if (AudioSetting.Instance != null && AudioSetting.Instance.laserSound != null && loopingAudioSource == null)
+        PlayLaserSound();
+    }
+
+    private void PlayLaserSound()
+    {
+        if (!audioSourceInitialized)
         {
-            GameObject audioObj = new GameObject("LaserAudio");
-            audioObj.transform.SetParent(transform);
-            loopingAudioSource = audioObj.AddComponent<AudioSource>();
-            loopingAudioSource.clip = AudioSetting.Instance.laserSound;
-            loopingAudioSource.volume = AudioSetting.Instance.laserSFXVolume;
-            loopingAudioSource.loop = true;
-            loopingAudioSource.Play();
+            InitializeAudioSource();
+        }
+        
+        if (laserAudioSource != null)
+        {
+            if (AudioSetting.Instance != null)
+            {
+                laserAudioSource.clip = AudioSetting.Instance.laserSound;
+                laserAudioSource.volume = AudioSetting.Instance.laserSFXVolume;
+            }
+            
+            if (!laserAudioSource.isPlaying)
+            {
+                laserAudioSource.Play();
+            }
+        }
+    }
+
+    private void StopLaserSound()
+    {
+        if (laserAudioSource != null && laserAudioSource.isPlaying)
+        {
+            laserAudioSource.Stop();
         }
     }
 
@@ -183,23 +215,17 @@ public class LaserActive : MonoBehaviour
         {
             Destroy(activeLaserInstance);
             activeLaserInstance = null;
-            activeVFX = null; // Clear the reference
+            activeVFX = null;
         }
         if (laserVisualScript != null)
             laserVisualScript.gameObject.SetActive(false);
-        CurrentBeamLength = laserFireRange; // Reset on stop
+        CurrentBeamLength = laserFireRange;
         fireTickAccumulator = 0f;
         rechargeAccumulator = 0f;
 
-        // Stop and destroy the looping audio source
-        if (loopingAudioSource != null)
-        {
-            Destroy(loopingAudioSource.gameObject);
-            loopingAudioSource = null;
-        }
+        StopLaserSound();
     }
 
-    // Call this method when the player levels up
     public void OnPlayerLevelUp()
     {
         laserDamage += 111;
@@ -210,7 +236,6 @@ public class LaserActive : MonoBehaviour
         }
     }
 
-    // Fires the laser, applies damage if an enemy is hit within range from screen center
     public void FireLaser()
     {
         if (weaponManager == null) return;
@@ -223,10 +248,8 @@ public class LaserActive : MonoBehaviour
         {
             calculatedRange = hit.distance;
 
-            // Prioritize Turret first
             if (hit.collider.CompareTag("Turret"))
             {
-                // Check for all weapon types since all weapons use "Turret" tag
                 var turret = hit.collider.GetComponentInParent<TurretControl>();
                 var smallCanon = hit.collider.GetComponentInParent<SmallCanonControl>();
                 var bigCanon = hit.collider.GetComponentInParent<BigCanon>();
@@ -235,30 +258,20 @@ public class LaserActive : MonoBehaviour
                 {
                     turret.TakeDamage((int)(laserDamage + playerPlane.attackPoint));
                     DmgPopUp.ShowLaserDamage(hit.point, (int)(laserDamage + playerPlane.attackPoint));
-                    Debug.Log($"[LaserActive] Damaged TurretControl: {turret.name}");
                 }
                 else if (smallCanon != null && playerPlane != null)
                 {
                     smallCanon.TakeDamage((int)(laserDamage + playerPlane.attackPoint));
                     DmgPopUp.ShowLaserDamage(hit.point, (int)(laserDamage + playerPlane.attackPoint));
-                    Debug.Log($"[LaserActive] Damaged SmallCanonControl: {smallCanon.name}");
                 }
                 else if (bigCanon != null && playerPlane != null)
                 {
                     bigCanon.TakeDamage((int)(laserDamage + playerPlane.attackPoint));
                     DmgPopUp.ShowLaserDamage(hit.point, (int)(laserDamage + playerPlane.attackPoint));
-                    Debug.Log($"[LaserActive] Damaged BigCanon: {bigCanon.name}");
-                }
-                else
-                {
-                    Debug.LogWarning($"[LaserActive] Hit object with 'Turret' tag but no weapon component found: {hit.collider.name}");
                 }
             }
-            // Then Enemy
             else if (hit.collider.CompareTag("Enemy"))
             {
-                Debug.Log($"[LaserActive] Laser hit enemy: {hit.collider.name}");
-                // Check for both regular enemies and main boss
                 var enemy = hit.collider.GetComponentInParent<EnemyStats>();
                 var mainBoss = hit.collider.GetComponentInParent<MainBossStats>();
                 
@@ -266,16 +279,13 @@ public class LaserActive : MonoBehaviour
                 {
                     enemy.TakeDamage(laserDamage + playerPlane.attackPoint);
                     DmgPopUp.ShowLaserDamage(hit.point, (int)(laserDamage + playerPlane.attackPoint));
-                    Debug.Log($"[LaserActive] Damaged EnemyStats: {enemy.name}");
                 }
                 else if (mainBoss != null && playerPlane != null)
                 {
                     mainBoss.TakeDamage(laserDamage + playerPlane.attackPoint);
                     DmgPopUp.ShowLaserDamage(hit.point, (int)(laserDamage + playerPlane.attackPoint));
-                    Debug.Log($"[LaserActive] Damaged MainBossStats: {mainBoss.name}");
                 }
             }
-            // Play explosion VFX at hit point for any hit
             if (explosionVFXPrefab != null)
             {
                 GameObject explosion = Instantiate(explosionVFXPrefab, hit.point, Quaternion.LookRotation(hit.normal));
@@ -283,9 +293,8 @@ public class LaserActive : MonoBehaviour
             }
         }
 
-        CurrentBeamLength = calculatedRange; // Update the public property
+        CurrentBeamLength = calculatedRange;
 
-        // Update the beam length on the correct VisualEffect
         if (activeVFX != null)
         {
             Vector3 beamScale = activeVFX.GetVector3("BeamsScale");

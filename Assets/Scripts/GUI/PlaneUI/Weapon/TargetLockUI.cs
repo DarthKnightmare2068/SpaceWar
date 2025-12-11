@@ -5,88 +5,137 @@ using TMPro;
 public class TargetLockUI : MonoBehaviour
 {
     [Header("UI References")]
-    public GameObject normalUI; // UI element to show when no target is locked
-    public GameObject machineGunUI; // Renamed from targetLockUI, used for both target lock and machine gun aim
-    public GameObject missileLockUI; // UI element to show when target is in missile lock range
-    public TMP_Text laserRangeText; // TMP text to notify if laser is in fire range
-    public float blinkInterval = 0.5f; // How fast the text blinks
+    public GameObject normalUI;
+    public GameObject machineGunUI;
+    public GameObject missileLockUI;
+    public TMP_Text laserRangeText;
+    public float blinkInterval = 0.5f;
 
     [Header("AutoTarget Reference")]
-    public AutoTargetLock autoTargetLock; // Reference to the auto target lock system
+    public AutoTargetLock autoTargetLock;
 
     [Header("Weapon Reference")]
-    public MachineGunControl machineGunControl; // Reference to the machine gun control
-    public PlayerWeaponManager weaponManager; // Reference to the weapon manager
-    public MissileLaunch missileLaunch; // Reference to the missile launch system
-    public LaserActive laserActive; // Reference to the laser weapon logic
-
-    [Header("Debug")]
-    public bool showDebugLogs = true;
+    public MachineGunControl machineGunControl;
+    public PlayerWeaponManager weaponManager;
+    public MissileLaunch missileLaunch;
+    public LaserActive laserActive;
 
     [Header("Cheat/Debug UI")]
-    public TMP_Text CheatHp; // Assign this to the yellow CheatHp text in the inspector
+    public TMP_Text CheatHp;
     private float cheatHpDisplayTimer = 0f;
     private const float cheatHpDisplayDuration = 1f;
     private PlaneStats playerStats;
     private bool lastCanTakeDamage = true;
 
     [Header("Missile Mode UI")]
-    public TMP_Text MissileModeText; // Assign this to the missile mode TMP text in the inspector
+    public TMP_Text MissileModeText;
     private float missileModeDisplayTimer = 0f;
     private const float missileModeDisplayDuration = 1f;
 
     private bool isLaserInRange = false;
     private float blinkTimer = 0f;
     private bool referencesChecked = false;
+    
+    private GameObject cachedPlayer;
+    private Camera cachedMainCamera;
+    private float playerSearchCooldown = 0f;
+    private const float PLAYER_SEARCH_INTERVAL = 0.5f;
+    private bool isInitialized = false;
+    
+    private bool cachedEnemyInMissileView = false;
+    private float enemyInMissileViewTimer = 0f;
+    private const float ENEMY_IN_MISSILE_VIEW_INTERVAL = 0.2f;
+
+    void Start()
+    {
+        cachedMainCamera = Camera.main;
+        TryInitializeReferences();
+    }
+
+    void OnEnable()
+    {
+        isInitialized = false;
+        TryInitializeReferences();
+    }
+
+    private void TryInitializeReferences()
+    {
+        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+        {
+            cachedPlayer = GameManager.Instance.currentPlayer;
+            CachePlayerComponents();
+            isInitialized = true;
+        }
+        else
+        {
+            cachedPlayer = GameObject.FindGameObjectWithTag("Player");
+            if (cachedPlayer != null)
+            {
+                CachePlayerComponents();
+                isInitialized = true;
+            }
+        }
+        
+        if (autoTargetLock == null && cachedPlayer != null)
+        {
+            autoTargetLock = cachedPlayer.GetComponent<AutoTargetLock>();
+        }
+        
+        if (autoTargetLock != null)
+        {
+            ConnectToAutoTargetLock();
+        }
+    }
+
+    private void CachePlayerComponents()
+    {
+        if (cachedPlayer == null) return;
+        
+        if (machineGunControl == null)
+            machineGunControl = cachedPlayer.GetComponent<MachineGunControl>();
+        if (weaponManager == null)
+            weaponManager = cachedPlayer.GetComponent<PlayerWeaponManager>();
+        if (missileLaunch == null)
+            missileLaunch = cachedPlayer.GetComponent<MissileLaunch>();
+        if (laserActive == null)
+            laserActive = cachedPlayer.GetComponent<LaserActive>();
+        if (playerStats == null)
+            playerStats = cachedPlayer.GetComponent<PlaneStats>();
+        if (autoTargetLock == null)
+            autoTargetLock = cachedPlayer.GetComponent<AutoTargetLock>();
+    }
 
     void Update()
     {
-        // Always check and assign weapon references at runtime
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
-        if (player != null)
+        if (!isInitialized || cachedPlayer == null || !cachedPlayer.activeInHierarchy)
         {
-            if (machineGunControl == null)
-                machineGunControl = player.GetComponent<MachineGunControl>();
-            if (weaponManager == null)
-                weaponManager = player.GetComponent<PlayerWeaponManager>();
-            if (missileLaunch == null)
-                missileLaunch = player.GetComponent<MissileLaunch>();
-            if (laserActive == null)
-                laserActive = player.GetComponent<LaserActive>();
-            if (playerStats == null || playerStats.gameObject != player)
-                playerStats = player.GetComponent<PlaneStats>();
-        }
-
-        // Always check and assign autoTargetLock at runtime
-        if (autoTargetLock == null)
-        {
-            autoTargetLock = FindObjectOfType<AutoTargetLock>();
-            if (autoTargetLock != null)
-                Debug.Log("[TargetLockUI] Found and assigned AutoTargetLock at runtime: " + autoTargetLock.name);
-        }
-
-        // Reference checking logic
-        if (!referencesChecked)
-        {
-            bool allAssigned = true;
-            if (normalUI == null) { Debug.LogWarning("[TargetLockUI] normalUI is not assigned."); allAssigned = false; }
-            if (machineGunUI == null) { Debug.LogWarning("[TargetLockUI] machineGunUI is not assigned."); allAssigned = false; }
-            if (missileLockUI == null) { Debug.LogWarning("[TargetLockUI] missileLockUI is not assigned."); allAssigned = false; }
-            if (laserRangeText == null) { Debug.LogWarning("[TargetLockUI] laserRangeText is not assigned."); allAssigned = false; }
-            if (autoTargetLock == null) { Debug.LogWarning("[TargetLockUI] autoTargetLock is not assigned."); allAssigned = false; }
-            if (machineGunControl == null) { Debug.LogWarning("[TargetLockUI] machineGunControl is not assigned."); allAssigned = false; }
-            if (weaponManager == null) { Debug.LogWarning("[TargetLockUI] weaponManager is not assigned."); allAssigned = false; }
-            if (missileLaunch == null) { Debug.LogWarning("[TargetLockUI] missileLaunch is not assigned."); allAssigned = false; }
-            if (laserActive == null) { Debug.LogWarning("[TargetLockUI] laserActive is not assigned."); allAssigned = false; }
-            if (playerStats == null) { Debug.LogWarning("[TargetLockUI] playerStats is not assigned."); allAssigned = false; }
-            if (allAssigned)
+            playerSearchCooldown -= Time.deltaTime;
+            if (playerSearchCooldown <= 0f)
             {
-                Debug.Log("[TargetLockUI] All references assigned.");
-                referencesChecked = true;
+                playerSearchCooldown = PLAYER_SEARCH_INTERVAL;
+                TryInitializeReferences();
+            }
+            
+            if (!isInitialized || cachedPlayer == null)
+            {
+                return;
             }
         }
 
-        // --- Machine Gun UI logic ---
+        if (!referencesChecked)
+        {
+            referencesChecked = true;
+        }
+
+        UpdateWeaponUI();
+        UpdateMissileUI();
+        UpdateLaserUI();
+        UpdateCheatUI();
+        UpdateMissileModeUI();
+    }
+
+    private void UpdateWeaponUI()
+    {
         bool inFireRange = false;
         if (machineGunUI != null && weaponManager != null)
         {
@@ -94,7 +143,6 @@ public class TargetLockUI : MonoBehaviour
             machineGunUI.SetActive(inFireRange);
         }
 
-        // --- Missile UI logic ---
         bool missileInRange = false;
         if (missileLockUI != null && weaponManager != null)
         {
@@ -102,183 +150,130 @@ public class TargetLockUI : MonoBehaviour
             missileLockUI.SetActive(missileInRange);
         }
 
-        // --- Laser UI logic ---
-        // isLaserInRange is already set by the laser range notification logic
-
-        // --- Normal UI logic ---
         if (normalUI != null)
             normalUI.SetActive(!(inFireRange || missileInRange || isLaserInRange));
 
-        // If we don't have PlayerWeaponManager reference yet, keep searching
-        if (weaponManager == null)
-        {
-            weaponManager = FindObjectOfType<PlayerWeaponManager>();
-            if (weaponManager == null)
-            {
-                return;
-            }
-        }
+        if (weaponManager == null) return;
 
-        // Machine gun UI logic: check if raycast from crosshair hits enemy within range
         bool mgInRange = false;
-        if (weaponManager != null)
+        Ray ray = weaponManager.GetCurrentTargetRay();
+        RaycastHit hit;
+        LayerMask targetableLayers = weaponManager.GetTargetableLayers();
+        
+        if (Physics.Raycast(ray, out hit, weaponManager.machineGunFireRange, targetableLayers))
         {
-            Ray ray = weaponManager.GetCurrentTargetRay();
-            RaycastHit hit;
-            // Use the same layer mask as PlayerWeaponManager for consistency
-            LayerMask targetableLayers = weaponManager.GetTargetableLayers();
-            if (Physics.Raycast(ray, out hit, weaponManager.machineGunFireRange, targetableLayers))
+            if (hit.collider.CompareTag("Enemy") || hit.collider.CompareTag("Turret"))
             {
-                if (showDebugLogs)
-                {
-                    Debug.Log($"[TargetLockUI] Machine gun raycast hit: {hit.collider.name} (tag: {hit.collider.tag}) at distance {hit.distance:F2}");
-                }
-                
-                if (hit.collider.CompareTag("Enemy") || hit.collider.CompareTag("Turret"))
-                {
-                    float hitDistance = hit.distance;
-                    mgInRange = hitDistance <= weaponManager.machineGunFireRange;
-                    
-                    // Debug: Show what type of target is being aimed at
-                    if (showDebugLogs)
-                    {
-                        string targetType = "Enemy Ship";
-                        if (hit.collider.CompareTag("Turret")) 
-                        {
-                            // Check which weapon type this is
-                            var turret = hit.collider.GetComponentInParent<TurretControl>();
-                            var smallCanon = hit.collider.GetComponentInParent<SmallCanonControl>();
-                            var bigCanon = hit.collider.GetComponentInParent<BigCanon>();
-                            
-                            if (turret != null) targetType = "Turret";
-                            else if (smallCanon != null) targetType = "Small Cannon";
-                            else if (bigCanon != null) targetType = "Big Cannon";
-                            else targetType = "Unknown Weapon";
-                        }
-                        Debug.Log($"[TargetLockUI] Machine Gun UI: Aiming at {targetType} ({hit.collider.name}) at distance {hitDistance:F2}, In range: {mgInRange}");
-                    }
-                }
-                else
-                {
-                    if (showDebugLogs)
-                    {
-                        Debug.Log($"[TargetLockUI] Machine gun raycast hit non-target: {hit.collider.name} (tag: {hit.collider.tag})");
-                    }
-                }
-            }
-            else
-            {
-                if (showDebugLogs)
-                {
-                    Debug.Log("[TargetLockUI] Machine gun raycast missed everything");
-                }
-            }
-        }
-        else
-        {
-            if (showDebugLogs)
-            {
-                Debug.LogWarning("[TargetLockUI] weaponManager is null!");
+                float hitDistance = hit.distance;
+                mgInRange = hitDistance <= weaponManager.machineGunFireRange;
             }
         }
 
-        // Update machine gun UI
         bool targetUIActive = machineGunUI != null && machineGunUI.activeInHierarchy;
         bool normalUIActive = normalUI != null && normalUI.activeInHierarchy;
 
-        if (showDebugLogs)
-        {
-            Debug.Log($"[TargetLockUI] UI Update - mgInRange: {mgInRange}, targetUIActive: {targetUIActive}, normalUIActive: {normalUIActive}");
-        }
-
         if (mgInRange && !targetUIActive)
         {
-            if (showDebugLogs)
-            {
-                Debug.Log("[TargetLockUI] Turning ON machine gun UI");
-            }
             UpdateUI(true);
         }
         else if (!mgInRange && !normalUIActive)
         {
-            if (showDebugLogs)
-            {
-                Debug.Log("[TargetLockUI] Turning OFF machine gun UI");
-            }
             UpdateUI(false);
         }
+    }
 
-        // Missile lock UI logic (still depends on AutoTargetLock)
+    private string GetTargetType(Collider collider)
+    {
+        if (collider.CompareTag("Enemy")) return "Enemy Ship";
+        
+        var turret = collider.GetComponentInParent<TurretControl>();
+        if (turret != null) return "Turret";
+        
+        var smallCanon = collider.GetComponentInParent<SmallCanonControl>();
+        if (smallCanon != null) return "Small Cannon";
+        
+        var bigCanon = collider.GetComponentInParent<BigCanon>();
+        if (bigCanon != null) return "Big Cannon";
+        
+        return "Unknown Weapon";
+    }
+
+    private void UpdateMissileUI()
+    {
         bool missileUIActive = missileLockUI != null && missileLockUI.activeInHierarchy;
+        
         if (missileLaunch != null && !missileLaunch.useAutoTargetLock)
         {
-            // Dumb-fire mode: UI on if any enemy is in missile fire range AND within lockCircleRadius of center
-            bool enemyInView = false;
-            if (autoTargetLock == null)
-                autoTargetLock = FindObjectOfType<AutoTargetLock>();
-            if (autoTargetLock != null)
+            enemyInMissileViewTimer += Time.deltaTime;
+            if (enemyInMissileViewTimer >= ENEMY_IN_MISSILE_VIEW_INTERVAL)
             {
-                foreach (string tag in autoTargetLock.targetTags)
-                {
-                    GameObject[] candidates = GameObject.FindGameObjectsWithTag(tag);
-                    foreach (GameObject obj in candidates)
-                    {
-                        if (obj == null) continue;
-                        float distance = Vector3.Distance(missileLaunch.transform.position, obj.transform.position);
-                        if (distance <= weaponManager.missileFireRange)
-                        {
-                            // Check if in lock circle radius
-                            Vector3 viewportPos = Camera.main.WorldToViewportPoint(obj.transform.position);
-                            float distFromCenter = Vector2.Distance(new Vector2(viewportPos.x, viewportPos.y), new Vector2(0.5f, 0.5f));
-                            if (distFromCenter <= autoTargetLock.lockCircleRadius)
-                            {
-                                enemyInView = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (enemyInView) break;
-                }
+                enemyInMissileViewTimer = 0f;
+                cachedEnemyInMissileView = CheckEnemyInMissileView();
             }
-            if (enemyInView && !missileUIActive)
-        {
-            UpdateMissileUI(true);
-        }
-            else if (!enemyInView && missileUIActive)
+            
+            if (cachedEnemyInMissileView && !missileUIActive)
             {
-                UpdateMissileUI(false);
+                UpdateMissileUIState(true);
+            }
+            else if (!cachedEnemyInMissileView && missileUIActive)
+            {
+                UpdateMissileUIState(false);
             }
         }
         else
         {
-            // Lock-on mode: current logic
-            if (autoTargetLock == null)
-            {
-                autoTargetLock = FindObjectOfType<AutoTargetLock>();
-                if (autoTargetLock == null)
-                {
-                    return;
-                }
-            }
+            if (autoTargetLock == null) return;
+            
             bool hasTarget = autoTargetLock.HasTarget();
             bool inMissileRange = false;
+            
             if (hasTarget && autoTargetLock.lockedTarget != null && weaponManager != null)
             {
                 Vector3 missileFromPos = missileLaunch != null ? missileLaunch.transform.position : transform.position;
                 float missileDistance = Vector3.Distance(missileFromPos, autoTargetLock.lockedTarget.position);
                 inMissileRange = missileDistance <= weaponManager.missileFireRange;
             }
+            
             if (hasTarget && inMissileRange && !missileUIActive)
             {
-                UpdateMissileUI(true);
+                UpdateMissileUIState(true);
             }
             else if ((!hasTarget || !inMissileRange) && missileUIActive)
-        {
-            UpdateMissileUI(false);
+            {
+                UpdateMissileUIState(false);
             }
         }
+    }
 
-        // Laser range notification logic
+    private bool CheckEnemyInMissileView()
+    {
+        if (autoTargetLock == null || weaponManager == null || missileLaunch == null) return false;
+        if (cachedMainCamera == null) cachedMainCamera = Camera.main;
+        if (cachedMainCamera == null) return false;
+
+        foreach (string tag in autoTargetLock.targetTags)
+        {
+            GameObject[] candidates = GameObject.FindGameObjectsWithTag(tag);
+            foreach (GameObject obj in candidates)
+            {
+                if (obj == null) continue;
+                float distance = Vector3.Distance(missileLaunch.transform.position, obj.transform.position);
+                if (distance <= weaponManager.missileFireRange)
+                {
+                    Vector3 viewportPos = cachedMainCamera.WorldToViewportPoint(obj.transform.position);
+                    float distFromCenter = Vector2.Distance(new Vector2(viewportPos.x, viewportPos.y), new Vector2(0.5f, 0.5f));
+                    if (distFromCenter <= autoTargetLock.lockCircleRadius)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private void UpdateLaserUI()
+    {
         if (laserActive == null)
         {
             isLaserInRange = false;
@@ -286,27 +281,20 @@ public class TargetLockUI : MonoBehaviour
         else
         {
             float range = laserActive.CurrentBeamLength;
-            Ray ray = laserActive.weaponManager != null ? laserActive.weaponManager.GetCurrentTargetRay() : Camera.main.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
+            Ray ray = laserActive.weaponManager != null ? laserActive.weaponManager.GetCurrentTargetRay() : cachedMainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
             RaycastHit hit;
             bool inRange = false;
 
             if (Physics.Raycast(ray, out hit, range))
             {
-                Debug.Log($"[TargetLockUI] Laser UI Raycast hit: {hit.collider.name} (tag: {hit.collider.tag}) at distance {hit.distance}, CurrentBeamLength: {range}");
                 if (hit.collider.CompareTag("Enemy") || hit.collider.CompareTag("Turret"))
                 {
                     inRange = true;
-                    Debug.Log("[TargetLockUI] Laser in fire range: UI should turn on!");
                 }
-            }
-            else
-            {
-                Debug.Log($"[TargetLockUI] Laser UI Raycast did not hit anything. CurrentBeamLength: {range}");
             }
             isLaserInRange = inRange;
         }
 
-        // Blinking TMP text logic
         if (laserRangeText != null)
         {
             if (isLaserInRange)
@@ -325,8 +313,10 @@ public class TargetLockUI : MonoBehaviour
                 blinkTimer = 0f;
             }
         }
+    }
 
-        // Toggle canTakeDamage with Left Ctrl + J
+    private void UpdateCheatUI()
+    {
         if (playerStats != null && Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.J))
         {
             playerStats.canTakeDamage = !playerStats.canTakeDamage;
@@ -339,7 +329,6 @@ public class TargetLockUI : MonoBehaviour
             }
         }
 
-        // Handle CheatHp text display timer
         if (CheatHp != null && CheatHp.gameObject.activeSelf)
         {
             if (cheatHpDisplayTimer > 0f)
@@ -351,8 +340,10 @@ public class TargetLockUI : MonoBehaviour
                 }
             }
         }
+    }
 
-        // Missile mode display timer logic
+    private void UpdateMissileModeUI()
+    {
         if (MissileModeText != null && MissileModeText.gameObject.activeSelf)
         {
             if (missileModeDisplayTimer > 0f)
@@ -370,9 +361,17 @@ public class TargetLockUI : MonoBehaviour
     {
         if (autoTargetLock == null) return;
         
-        // Subscribe to target lock events
         autoTargetLock.OnTargetLocked += OnTargetLocked;
         autoTargetLock.OnTargetLost += OnTargetLost;
+    }
+
+    void OnDestroy()
+    {
+        if (autoTargetLock != null)
+        {
+            autoTargetLock.OnTargetLocked -= OnTargetLocked;
+            autoTargetLock.OnTargetLost -= OnTargetLost;
+        }
     }
     
     private void OnTargetLocked(Transform target)
@@ -387,20 +386,18 @@ public class TargetLockUI : MonoBehaviour
     
     private void UpdateUI(bool targetLocked)
     {
-        // Enable/disable Normal UI
         if (normalUI != null)
         {
             normalUI.SetActive(!targetLocked);
         }
         
-        // Enable/disable Machine Gun UI
         if (machineGunUI != null)
         {
             machineGunUI.SetActive(targetLocked);
         }
     }
     
-    private void UpdateMissileUI(bool missileLocked)
+    private void UpdateMissileUIState(bool missileLocked)
     {
         if (missileLockUI != null)
         {
@@ -408,7 +405,6 @@ public class TargetLockUI : MonoBehaviour
         }
     }
     
-    // Public methods for manual control (if needed)
     public void ForceShowNormal()
     {
         UpdateUI(false);
@@ -419,20 +415,16 @@ public class TargetLockUI : MonoBehaviour
         UpdateUI(true);
     }
     
-    // Method to manually set the AutoTargetLock reference (called by GameManager)
     public void SetAutoTargetLock(AutoTargetLock targetLock)
     {
-        // Unsubscribe from old events
         if (autoTargetLock != null)
         {
             autoTargetLock.OnTargetLocked -= OnTargetLocked;
             autoTargetLock.OnTargetLost -= OnTargetLost;
         }
         
-        // Set new reference
         autoTargetLock = targetLock;
         
-        // Connect to new AutoTargetLock
         if (autoTargetLock != null)
         {
             ConnectToAutoTargetLock();
@@ -447,9 +439,15 @@ public class TargetLockUI : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Call this function to display the current missile mode on screen for 1 second.
-    /// </summary>
+    public void OnPlayerSpawned(GameObject player)
+    {
+        cachedPlayer = player;
+        isInitialized = false;
+        referencesChecked = false;
+        CachePlayerComponents();
+        isInitialized = true;
+    }
+
     public void ShowMissileMode()
     {
         if (MissileModeText != null && missileLaunch != null)
@@ -463,4 +461,4 @@ public class TargetLockUI : MonoBehaviour
             missileModeDisplayTimer = missileModeDisplayDuration;
         }
     }
-} 
+}

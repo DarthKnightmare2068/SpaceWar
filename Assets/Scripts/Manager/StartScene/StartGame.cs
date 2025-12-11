@@ -21,11 +21,6 @@ public class StartGame : MonoBehaviour
     [Tooltip("Duration of audio fade out on exit")]
     public float exitFadeOutDuration = 0.5f;
 
-    void Awake()
-    {
-        // Initialize scene selection
-    }
-
     public void LoadSceneByName(string sceneName)
     {
         targetSceneName = sceneName;
@@ -39,7 +34,6 @@ public class StartGame : MonoBehaviour
 
     private IEnumerator TransitionToScene()
     {
-        // Fade out start screen audio if enabled and not immediate
         if (fadeOutAudioOnTransition && !immediateTransition && StartScreenAudio.Instance != null)
         {
             StartScreenAudio.Instance.FadeOutMusic(fadeOutDuration);
@@ -47,32 +41,24 @@ public class StartGame : MonoBehaviour
         }
         else if (StartScreenAudio.Instance != null)
         {
-            // Always fade out music before loading the new scene
-            StartScreenAudio.Instance.FadeOutMusic(1f); // 1 second fade if not already faded
+            StartScreenAudio.Instance.FadeOutMusic(1f);
             yield return new WaitForSeconds(1f);
         }
 
-        // Load the scene
         if (!string.IsNullOrEmpty(targetSceneName))
         {
             SceneManager.LoadSceneAsync(targetSceneName);
-        }
-        else
-        {
-            Debug.LogError("No valid scene name specified for transition!");
         }
     }
 
     private IEnumerator ExitGameCoroutine()
     {
-        // Fade out start screen audio if enabled
         if (fadeOutAudioOnExit && StartScreenAudio.Instance != null)
         {
             StartScreenAudio.Instance.FadeOutMusic(exitFadeOutDuration);
             yield return new WaitForSeconds(exitFadeOutDuration);
         }
 
-        // Exit the game
         #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
         #else
@@ -80,7 +66,6 @@ public class StartGame : MonoBehaviour
         #endif
     }
 
-    // Get current selected scene name
     public string GetCurrentSelectedScene()
     {
         return targetSceneName;

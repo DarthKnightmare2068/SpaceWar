@@ -23,8 +23,7 @@ public class SmallCanonManager : MonoBehaviour
     [Header("Tracking Mode")]
     public bool trackPlayerInstantly = false;
 
-    // Internals
-    private float howCloseToPlayer; // This will be set from WeaponDmgControl
+    private float howCloseToPlayer;
     private List<Transform> players = new List<Transform>();
     private Dictionary<SmallCanonControl, Transform> canonTargets = new Dictionary<SmallCanonControl, Transform>();
     private float reviveTimer = 0f;
@@ -32,10 +31,8 @@ public class SmallCanonManager : MonoBehaviour
 
     void Awake()
     {
-        // Always rebuild the canons list from all children (active and inactive)
         canons = new List<SmallCanonControl>(GetComponentsInChildren<SmallCanonControl>(true));
 
-        // Initialize from WeaponDmgControl
         WeaponDmgControl dmgControl = FindObjectOfType<WeaponDmgControl>();
         if (dmgControl != null)
         {
@@ -43,15 +40,13 @@ public class SmallCanonManager : MonoBehaviour
         }
         else
         {
-            howCloseToPlayer = 100f; // Fallback
-            Debug.LogWarning("WeaponDmgControl not found. Using default fire range for SmallCanonManager.");
+            howCloseToPlayer = 100f;
         }
 
         SetAllCanonsHP();
         maxCanonCount = canons.Count;
         currentCanonCount = maxCanonCount;
 
-        // Set tracking mode for all canons at start
         foreach (var canon in canons)
         {
             if (canon != null)
@@ -63,14 +58,12 @@ public class SmallCanonManager : MonoBehaviour
     {
         CleanCanonList();
         currentCanonCount = canons.Count;
-        // Handle revive timer
         if (reviveTimerRunning)
         {
             reviveTimer -= Time.deltaTime;
             if (reviveTimer <= 0f)
             {
                 reviveTimerRunning = false;
-                // Only revive if at least one canon is still alive
                 if (currentCanonCount > 0)
                 {
                     ReviveAllCanons();
@@ -78,14 +71,12 @@ public class SmallCanonManager : MonoBehaviour
             }
         }
 
-        // Sync tracking mode for all canons every frame (in case toggled at runtime)
         foreach (var canon in canons)
         {
             if (canon != null)
                 canon.SetTrackingMode(trackPlayerInstantly);
         }
 
-        // Failsafe: recount canons every frame
         RecountCanons();
     }
 
@@ -101,11 +92,9 @@ public class SmallCanonManager : MonoBehaviour
         }
     }
 
-    // Call this from SmallCanonControl when a canon is destroyed
     public void OnCanonDestroyed()
     {
         currentCanonCount = Mathf.Max(currentCanonCount - 1, 0);
-        Debug.Log($"[SmallCanonManager] OnCanonDestroyed called. currentCanonCount: {currentCanonCount}");
         if (!reviveTimerRunning)
         {
             reviveTimer = reviveTime;
@@ -120,15 +109,12 @@ public class SmallCanonManager : MonoBehaviour
             if (canon != null)
             {
                 canon.currentHP = canonHP;
-                // Optionally, respawn or reset position/state if needed
                 canon.gameObject.SetActive(true);
             }
         }
         currentCanonCount = maxCanonCount;
-        Debug.Log("[SmallCanonManager] All canons revived!");
     }
 
-    // Failsafe recount method
     public void RecountCanons()
     {
         int count = 0;
@@ -136,10 +122,6 @@ public class SmallCanonManager : MonoBehaviour
         {
             if (canon != null && canon.gameObject.activeInHierarchy && canon.currentHP > 0)
                 count++;
-        }
-        if (currentCanonCount != count)
-        {
-            Debug.Log($"[SmallCanonManager] Recounted canons. currentCanonCount: {count}");
         }
         currentCanonCount = count;
     }
