@@ -15,6 +15,11 @@ public class MissileController : MonoBehaviour
     [Header("Missile Mode")]
     public bool useAutoTargetLock = true;
 
+    // Cached references to avoid FindObjectOfType on collision
+    private AutoTargetLock cachedAutoTargetLock;
+    private PlayerWeaponManager cachedWeaponManager;
+    private Transform cachedPlayerTransform;
+
     public void SetShooter(GameObject shooterObj)
     {
         shooter = shooterObj;
@@ -46,7 +51,14 @@ public class MissileController : MonoBehaviour
         lifetime = missileLifetime;
         PlaneStats playerPlane = null;
         if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-            playerPlane = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
+        {
+            GameObject player = GameManager.Instance.currentPlayer;
+            playerPlane = player.GetComponent<PlaneStats>();
+            // Cache references once during initialization instead of on collision
+            cachedAutoTargetLock = player.GetComponent<AutoTargetLock>();
+            cachedWeaponManager = player.GetComponent<PlayerWeaponManager>();
+            cachedPlayerTransform = player.transform;
+        }
         damage = baseDamage;
         if (playerPlane != null)
             damage += playerPlane.attackPoint;
@@ -57,27 +69,14 @@ public class MissileController : MonoBehaviour
     {
         if (hasExploded) return;
 
-        if (!useAutoTargetLock)
+        // Simplified - removed duplicate code from both branches
+        if (rb != null)
         {
-            if (rb != null)
-            {
-                rb.velocity = transform.forward * speed;
-            }
-            else
-            {
-                transform.position += transform.forward * speed * Time.fixedDeltaTime;
-            }
+            rb.velocity = transform.forward * speed;
         }
         else
         {
-            if (rb != null)
-            {
-                rb.velocity = transform.forward * speed;
-            }
-            else
-            {
-                transform.position += transform.forward * speed * Time.fixedDeltaTime;
-            }
+            transform.position += transform.forward * speed * Time.fixedDeltaTime;
         }
 
         float timeAlive = Time.time - startTime;
@@ -130,19 +129,21 @@ public class MissileController : MonoBehaviour
             {
                 if (!useAutoTargetLock)
                 {
-                    var player = GameManager.Instance.currentPlayer;
-                    var weaponManager = player.GetComponent<PlayerWeaponManager>();
-                    float distance = Vector3.Distance(player.transform.position, other.transform.position);
-                    if (distance <= weaponManager.missileFireRange)
+                    // Use cached references instead of GetComponent on collision
+                    if (cachedPlayerTransform != null && cachedWeaponManager != null)
                     {
-                        enemyStats.TakeDamage((int)damage);
-                        DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
+                        float distance = Vector3.Distance(cachedPlayerTransform.position, other.transform.position);
+                        if (distance <= cachedWeaponManager.missileFireRange)
+                        {
+                            enemyStats.TakeDamage((int)damage);
+                            DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
+                        }
                     }
                 }
                 else
                 {
-                    AutoTargetLock autoTargetLock = FindObjectOfType<AutoTargetLock>();
-                    if (autoTargetLock != null && autoTargetLock.IsValidTarget(other.transform))
+                    // Use cached AutoTargetLock instead of FindObjectOfType
+                    if (cachedAutoTargetLock != null && cachedAutoTargetLock.IsValidTarget(other.transform))
                     {
                         enemyStats.TakeDamage((int)damage);
                         DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
@@ -153,19 +154,21 @@ public class MissileController : MonoBehaviour
             {
                 if (!useAutoTargetLock)
                 {
-                    var player = GameManager.Instance.currentPlayer;
-                    var weaponManager = player.GetComponent<PlayerWeaponManager>();
-                    float distance = Vector3.Distance(player.transform.position, other.transform.position);
-                    if (distance <= weaponManager.missileFireRange)
+                    // Use cached references instead of GetComponent on collision
+                    if (cachedPlayerTransform != null && cachedWeaponManager != null)
                     {
-                        mainBossStats.TakeDamage((int)damage);
-                        DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
+                        float distance = Vector3.Distance(cachedPlayerTransform.position, other.transform.position);
+                        if (distance <= cachedWeaponManager.missileFireRange)
+                        {
+                            mainBossStats.TakeDamage((int)damage);
+                            DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
+                        }
                     }
                 }
                 else
                 {
-                    AutoTargetLock autoTargetLock = FindObjectOfType<AutoTargetLock>();
-                    if (autoTargetLock != null && autoTargetLock.IsValidTarget(other.transform))
+                    // Use cached AutoTargetLock instead of FindObjectOfType
+                    if (cachedAutoTargetLock != null && cachedAutoTargetLock.IsValidTarget(other.transform))
                     {
                         mainBossStats.TakeDamage((int)damage);
                         DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);

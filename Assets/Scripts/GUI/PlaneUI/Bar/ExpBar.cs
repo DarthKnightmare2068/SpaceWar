@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -24,6 +25,23 @@ public class ExpBar : MonoBehaviour
             levelText = GetComponentInChildren<TextMeshProUGUI>();
         }
 
+        // Delay initialization to avoid startup lag
+        StartCoroutine(DelayedInitialization());
+    }
+
+    private IEnumerator DelayedInitialization()
+    {
+        // Wait a few frames for scene to initialize
+        yield return new WaitForSeconds(0.1f);
+        
+        // Try cached GameManager reference first
+        if (GameManager.Instance != null && GameManager.Instance.levelUpSystem != null)
+        {
+            levelUpSystem = GameManager.Instance.levelUpSystem;
+            yield break;
+        }
+        
+        // Fallback only if needed
         FindLevelUpSystem();
     }
 
@@ -80,12 +98,14 @@ public class ExpBar : MonoBehaviour
 
     void FindLevelUpSystem()
     {
+        // Always try cached GameManager reference first (no search)
         if (GameManager.Instance != null && GameManager.Instance.levelUpSystem != null)
         {
             levelUpSystem = GameManager.Instance.levelUpSystem;
             return;
         }
         
+        // Only use expensive FindObjectOfType as last resort
         levelUpSystem = FindObjectOfType<LevelUpSystem>();
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -29,6 +30,14 @@ public class EnemyHealthBar : MonoBehaviour
 
     void Start()
     {
+        // Delay initialization to avoid startup lag - wait for enemies to spawn
+        StartCoroutine(DelayedInitialization());
+    }
+
+    private IEnumerator DelayedInitialization()
+    {
+        // Wait for enemies to spawn (they spawn after boss)
+        yield return new WaitForSeconds(0.2f);
         AssignTargetFromSelection();
     }
 

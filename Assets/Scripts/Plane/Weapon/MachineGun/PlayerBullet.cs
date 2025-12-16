@@ -3,10 +3,36 @@ using UnityEngine;
 public class PlayerBullet : MonoBehaviour
 {
     private PooledProjectile pooledProjectile;
+    
+    // Cached references to avoid GetComponent on every collision
+    private static PlayerWeaponManager cachedWeaponManager;
+    private static MachineGunControl cachedGunControl;
+    private static PlaneStats cachedPlayerStats;
+    private static GameObject cachedPlayer;
 
     void Awake()
     {
         pooledProjectile = GetComponent<PooledProjectile>();
+    }
+    
+    void OnEnable()
+    {
+        // Refresh cache if player changed or cache is stale
+        RefreshPlayerCache();
+    }
+    
+    private static void RefreshPlayerCache()
+    {
+        if (GameManager.Instance == null || GameManager.Instance.currentPlayer == null) return;
+        
+        GameObject currentPlayer = GameManager.Instance.currentPlayer;
+        if (cachedPlayer != currentPlayer)
+        {
+            cachedPlayer = currentPlayer;
+            cachedWeaponManager = currentPlayer.GetComponent<PlayerWeaponManager>();
+            cachedGunControl = currentPlayer.GetComponent<MachineGunControl>();
+            cachedPlayerStats = currentPlayer.GetComponent<PlaneStats>();
+        }
     }
 
     void OnCollisionEnter(Collision collision)
@@ -45,22 +71,23 @@ public class PlayerBullet : MonoBehaviour
 
     private void HandleEnemyCollision(Collision collision)
     {
-        if (GameManager.Instance == null || GameManager.Instance.currentPlayer == null) return;
+        // Use static cached references instead of GetComponent on every collision
+        if (cachedPlayer == null || cachedGunControl == null || cachedPlayerStats == null)
+        {
+            RefreshPlayerCache();
+            if (cachedGunControl == null || cachedPlayerStats == null) return;
+        }
         
         var enemyStats = collision.gameObject.GetComponentInParent<EnemyStats>();
         var mainBossStats = collision.gameObject.GetComponentInParent<MainBossStats>();
-        var player = GameManager.Instance.currentPlayer;
-        var weaponManager = player.GetComponent<PlayerWeaponManager>();
-        var gunControl = player.GetComponent<MachineGunControl>();
-        var playerStats = player.GetComponent<PlaneStats>();
         
-        if (enemyStats != null && weaponManager != null && gunControl != null && playerStats != null)
+        if (enemyStats != null)
         {
-            ApplyDamageToEnemy(enemyStats, gunControl, playerStats);
+            ApplyDamageToEnemy(enemyStats, cachedGunControl, cachedPlayerStats);
         }
-        else if (mainBossStats != null && weaponManager != null && gunControl != null && playerStats != null)
+        else if (mainBossStats != null)
         {
-            ApplyDamageToMainBoss(mainBossStats, gunControl, playerStats);
+            ApplyDamageToMainBoss(mainBossStats, cachedGunControl, cachedPlayerStats);
         }
     }
 

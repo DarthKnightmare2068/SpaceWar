@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.UI;
 
 
@@ -60,14 +60,8 @@ public class HudLiteScript : MonoBehaviour
     {
         if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
         {
-            Debug.Log("[HUD] Start() auto-assigning player.");
             SetAircraft(GameManager.Instance.currentPlayer);
         }
-        else
-        {
-            Debug.Log("[HUD] Start() did not find player to assign.");
-        }
-        Debug.Log($"[HUD] After Start: aircraft={aircraft}, aircraftRB={aircraftRB}");
     }
     public void toogleHud()
     {
@@ -82,11 +76,8 @@ public class HudLiteScript : MonoBehaviour
             // Auto-assign player if available
             if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
             {
-                Debug.Log($"[HUD] Attempting to auto-assign player in toogleHud. Player: {GameManager.Instance.currentPlayer}");
                 SetAircraft(GameManager.Instance.currentPlayer);
             }
-
-            Debug.Log($"[HUD] After toogleHud: aircraft={aircraft}, aircraftRB={aircraftRB}");
             isActive = true;
             if (activeMsg != "") DisplayMsg.show(activeMsg, 5);
         }
@@ -109,7 +100,6 @@ public class HudLiteScript : MonoBehaviour
             isActive = true;
             if (hudPanel != null) hudPanel.gameObject.SetActive(true);
             SetAircraft(GameManager.Instance.currentPlayer);
-            Debug.Log("[HUD] Reactivated after respawn.");
         }
 
         // Return if not active
@@ -121,12 +111,10 @@ public class HudLiteScript : MonoBehaviour
             if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
             {
                 SetAircraft(GameManager.Instance.currentPlayer);
-                Debug.Log("[HUD] Auto-reassigned player aircraft and Rigidbody in Update().");
             }
             else
             {
                 isActive = false;
-                Debug.LogWarning("[HUD] No player found to assign. HUD deactivated.");
                 return;
             }
         }
@@ -229,11 +217,6 @@ public class HudLiteScript : MonoBehaviour
         {
             aircraft = plane.transform;
             aircraftRB = plane.GetComponent<Rigidbody>();
-            Debug.Log($"[HUD] SetAircraft called. Assigned aircraft={aircraft}, aircraftRB={aircraftRB}");
-        }
-        else
-        {
-            Debug.LogWarning("[HUD] SetAircraft called with null plane!");
         }
     }
 }
@@ -267,11 +250,6 @@ public class HudAutoLockScript : HudLiteScript
             }
         }
         lockedTarget = bestTarget;
-        if (lockedTarget != null)
-        {
-            // Show lock indicator or debug log
-            Debug.Log($"Locked target: {lockedTarget.name}");
-            // Optionally, add UI indicator here
-        }
+        // Optionally, add UI indicator here when target is locked
     }
 }

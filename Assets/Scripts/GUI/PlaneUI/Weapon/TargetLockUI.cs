@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -45,10 +46,23 @@ public class TargetLockUI : MonoBehaviour
     private bool cachedEnemyInMissileView = false;
     private float enemyInMissileViewTimer = 0f;
     private const float ENEMY_IN_MISSILE_VIEW_INTERVAL = 0.2f;
+    
+    // Cached enemy lists to avoid FindGameObjectsWithTag every frame
+    private GameObject[] cachedEnemyTargets;
+    private float enemyTargetCacheTimer = 0f;
+    private const float ENEMY_TARGET_CACHE_INTERVAL = 0.5f;
 
     void Start()
     {
         cachedMainCamera = Camera.main;
+        // Delay initialization to avoid startup lag - wait for player to spawn
+        StartCoroutine(DelayedInitialization());
+    }
+
+    private IEnumerator DelayedInitialization()
+    {
+        // Wait a few frames for scene to initialize and player to spawn
+        yield return new WaitForSeconds(0.15f);
         TryInitializeReferences();
     }
 
@@ -245,27 +259,48 @@ public class TargetLockUI : MonoBehaviour
         }
     }
 
+    private void RefreshEnemyTargetCache()
+    {
+        if (autoTargetLock == null || autoTargetLock.targetTags == null) return;
+        
+        // Build combined list of all tagged objects
+        System.Collections.Generic.List<GameObject> allTargets = new System.Collections.Generic.List<GameObject>();
+        foreach (string tag in autoTargetLock.targetTags)
+        {
+            GameObject[] candidates = GameObject.FindGameObjectsWithTag(tag);
+            allTargets.AddRange(candidates);
+        }
+        cachedEnemyTargets = allTargets.ToArray();
+    }
+    
     private bool CheckEnemyInMissileView()
     {
         if (autoTargetLock == null || weaponManager == null || missileLaunch == null) return false;
         if (cachedMainCamera == null) cachedMainCamera = Camera.main;
         if (cachedMainCamera == null) return false;
 
-        foreach (string tag in autoTargetLock.targetTags)
+        // Refresh cache at intervals instead of every call
+        enemyTargetCacheTimer += Time.deltaTime;
+        if (enemyTargetCacheTimer >= ENEMY_TARGET_CACHE_INTERVAL || cachedEnemyTargets == null)
         {
-            GameObject[] candidates = GameObject.FindGameObjectsWithTag(tag);
-            foreach (GameObject obj in candidates)
+            enemyTargetCacheTimer = 0f;
+            RefreshEnemyTargetCache();
+        }
+        
+        if (cachedEnemyTargets == null) return false;
+
+        // Use cached enemy list
+        foreach (GameObject obj in cachedEnemyTargets)
+        {
+            if (obj == null || !obj.activeInHierarchy) continue;
+            float distance = Vector3.Distance(missileLaunch.transform.position, obj.transform.position);
+            if (distance <= weaponManager.missileFireRange)
             {
-                if (obj == null) continue;
-                float distance = Vector3.Distance(missileLaunch.transform.position, obj.transform.position);
-                if (distance <= weaponManager.missileFireRange)
+                Vector3 viewportPos = cachedMainCamera.WorldToViewportPoint(obj.transform.position);
+                float distFromCenter = Vector2.Distance(new Vector2(viewportPos.x, viewportPos.y), new Vector2(0.5f, 0.5f));
+                if (distFromCenter <= autoTargetLock.lockCircleRadius)
                 {
-                    Vector3 viewportPos = cachedMainCamera.WorldToViewportPoint(obj.transform.position);
-                    float distFromCenter = Vector2.Distance(new Vector2(viewportPos.x, viewportPos.y), new Vector2(0.5f, 0.5f));
-                    if (distFromCenter <= autoTargetLock.lockCircleRadius)
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
         }

@@ -58,6 +58,14 @@ public class GameManager : MonoBehaviour
     [Range(0f, 1f)] public float enemyDestroyedVolume = 1f;
     private AudioSource audioSource;
 
+    [Header("Performance Settings")]
+    [Tooltip("Delay between spawning objects on scene start (in frames)")]
+    [SerializeField] private int spawnDelayFrames = 2;
+
+    // Cached references to avoid expensive FindObjectOfType calls
+    private Ilumisoft.RadarSystem.Radar[] cachedRadars;
+    private bool radarsCached = false;
+
     void Awake()
     {
         if (Instance == null)
@@ -83,6 +91,8 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
+        // Use a more efficient check - only search if we suspect there are leftover players
+        // Most of the time this will be empty on fresh scene load
         var existingPlayers = GameObject.FindGameObjectsWithTag("Player");
         foreach (var player in existingPlayers)
         {
@@ -91,14 +101,88 @@ public class GameManager : MonoBehaviour
 
         SetFPSLock();
 
+        // Spread out expensive instantiation across multiple frames to prevent lag spike
+        StartCoroutine(InitializeSceneAsync());
+    }
+
+    private IEnumerator InitializeSceneAsync()
+    {
+        // Wait a frame to let other systems initialize
+        yield return null;
+
+        // Spawn boss first
         if (currentBoss == null && bossPrefab != null)
         {
             currentBoss = SpawnBossAtStart();
-            SpawnEnemyFormation(currentBoss);
+            yield return new WaitForEndOfFrame();
         }
-        if (playerPrefab != null && currentBoss != null)
+
+        // Spawn enemy formation with delays
+        if (currentBoss != null)
         {
-            currentPlayer = SpawnPlayerAtRespawn(playerBossYDistance);
+            StartCoroutine(SpawnEnemyFormationAsync(currentBoss));
+            
+            // Wait a few frames before spawning player
+            for (int i = 0; i < spawnDelayFrames; i++)
+            {
+                yield return null;
+            }
+
+            if (playerPrefab != null)
+            {
+                currentPlayer = SpawnPlayerAtRespawn(playerBossYDistance);
+            }
+        }
+    }
+
+    private IEnumerator SpawnEnemyFormationAsync(GameObject boss)
+    {
+        if (boss == null) yield break;
+
+        Vector3 bossPos = boss.transform.position;
+        Quaternion rotation = Quaternion.identity;
+        float escortYPosition = bossPos.y - 500f;
+
+        // Spawn enemies one at a time with frame delays
+        if (enemyShip1Prefab != null)
+        {
+            Vector3 spawnPos1 = bossPos + Vector3.forward * frontDistance;
+            spawnPos1.y = escortYPosition;
+            GameObject ship1 = Instantiate(enemyShip1Prefab, spawnPos1, rotation);
+            activeEnemyShips.Add(ship1);
+            if (enemyShip1HealthBar != null)
+            {
+                EnemyStats ship1Stats = ship1.GetComponent<EnemyStats>();
+                enemyShip1HealthBar.SetTarget(ship1Stats);
+            }
+            yield return null;
+        }
+
+        if (enemyShip2Prefab != null)
+        {
+            Vector3 spawnPos2 = bossPos + Vector3.left * sideDistance;
+            spawnPos2.y = escortYPosition;
+            GameObject ship2 = Instantiate(enemyShip2Prefab, spawnPos2, rotation);
+            activeEnemyShips.Add(ship2);
+            if (enemyShip2HealthBar != null)
+            {
+                EnemyStats ship2Stats = ship2.GetComponent<EnemyStats>();
+                enemyShip2HealthBar.SetTarget(ship2Stats);
+            }
+            yield return null;
+        }
+
+        if (enemyShip3Prefab != null)
+        {
+            Vector3 spawnPos3 = bossPos + Vector3.right * sideDistance;
+            spawnPos3.y = escortYPosition;
+            GameObject ship3 = Instantiate(enemyShip3Prefab, spawnPos3, rotation);
+            activeEnemyShips.Add(ship3);
+            if (enemyShip3HealthBar != null)
+            {
+                EnemyStats ship3Stats = ship3.GetComponent<EnemyStats>();
+                enemyShip3HealthBar.SetTarget(ship3Stats);
+            }
         }
     }
 
@@ -185,6 +269,15 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    private void CacheRadars()
+    {
+        if (!radarsCached)
+        {
+            cachedRadars = FindObjectsOfType<Ilumisoft.RadarSystem.Radar>();
+            radarsCached = true;
+        }
+    }
+
     public Vector3 GetRespawnPosition(float belowBossYDistance)
     {
         activeEnemyShips.RemoveAll(ship => ship == null);
@@ -199,6 +292,7 @@ public class GameManager : MonoBehaviour
 
             foreach (var ship in activeEnemyShips)
             {
+                if (ship == null) continue;
                 float dist = Vector3.Distance(ship.transform.position, playerLastKnownPosition);
                 if (dist < minDistance)
                 {
@@ -207,8 +301,20 @@ public class GameManager : MonoBehaviour
                 }
             }
             
-            referencePosition = closestShip.transform.position;
-            spawnDistance = 2000f;
+            if (closestShip != null)
+            {
+                referencePosition = closestShip.transform.position;
+                spawnDistance = 2000f;
+            }
+            else if (currentBoss != null)
+            {
+                referencePosition = currentBoss.transform.position;
+                spawnDistance = playerBossMinDistance;
+            }
+            else
+            {
+                return new Vector3(0, bossMinYSpawn - belowBossYDistance, 0);
+            }
         }
         else if (currentBoss != null)
         {
@@ -221,10 +327,23 @@ public class GameManager : MonoBehaviour
         }
         
         Vector3 respawnPos;
-        int maxTries = 50;
+        int maxTries = 20; // Reduced from 50 - faster startup
         int tries = 0;
         bool insideEnemy = true;
         float minSafeDistance = 150f;
+        
+        // Cache colliders to avoid repeated GetComponent calls
+        List<Collider> enemyColliders = new List<Collider>();
+        foreach (var ship in activeEnemyShips)
+        {
+            if (ship != null)
+            {
+                Collider col = ship.GetComponentInChildren<Collider>();
+                if (col != null) enemyColliders.Add(col);
+            }
+        }
+        Collider bossCol = (currentBoss != null) ? currentBoss.GetComponentInChildren<Collider>() : null;
+        
         do
         {
             Vector2 randomDir = Random.insideUnitCircle.normalized;
@@ -235,19 +354,23 @@ public class GameManager : MonoBehaviour
             respawnPos.y = Mathf.Max(bossPos.y, bossMinYSpawn) - belowBossYDistance;
 
             insideEnemy = false;
-            foreach (var ship in activeEnemyShips)
+            
+            // Use cached colliders instead of GetComponentInChildren
+            foreach (var col in enemyColliders)
             {
-                Collider col = ship.GetComponentInChildren<Collider>();
-                if (col != null && (col.bounds.Contains(respawnPos) || Vector3.Distance(respawnPos, ship.transform.position) < minSafeDistance))
+                if (col != null && col.gameObject.activeInHierarchy)
                 {
-                    insideEnemy = true;
-                    break;
+                    if (col.bounds.Contains(respawnPos) || Vector3.Distance(respawnPos, col.transform.position) < minSafeDistance)
+                    {
+                        insideEnemy = true;
+                        break;
+                    }
                 }
             }
-            if (!insideEnemy && currentBoss != null)
+            
+            if (!insideEnemy && bossCol != null && bossCol.gameObject.activeInHierarchy)
             {
-                Collider bossCol = currentBoss.GetComponentInChildren<Collider>();
-                if (bossCol != null && (bossCol.bounds.Contains(respawnPos) || Vector3.Distance(respawnPos, currentBoss.transform.position) < minSafeDistance))
+                if (bossCol.bounds.Contains(respawnPos) || Vector3.Distance(respawnPos, currentBoss.transform.position) < minSafeDistance)
                 {
                     insideEnemy = true;
                 }
@@ -272,12 +395,19 @@ public class GameManager : MonoBehaviour
         if (uiCamera != null)
             uiCamera.gameObject.SetActive(false);
 
-        foreach (var radar in FindObjectsOfType<Ilumisoft.RadarSystem.Radar>())
+        // Cache radar references to avoid expensive FindObjectOfType on every spawn
+        CacheRadars();
+        if (cachedRadars != null)
         {
-            radar.SetPlayer(player);
+            foreach (var radar in cachedRadars)
+            {
+                if (radar != null)
+                    radar.SetPlayer(player);
+            }
         }
         
-        AudioSetting.Instance.PlayRespawnSoundForPlayer(player);
+        if (AudioSetting.Instance != null)
+            AudioSetting.Instance.PlayRespawnSoundForPlayer(player);
         
         if (HudLiteScript.current != null)
             HudLiteScript.current.SetAircraft(player);
@@ -362,7 +492,8 @@ public class GameManager : MonoBehaviour
         activeEnemyShips.Clear();
         if (currentBoss != null)
         {
-            SpawnEnemyFormation(currentBoss);
+            // Use async version to avoid frame spike
+            StartCoroutine(SpawnEnemyFormationAsync(currentBoss));
         }
     }
 

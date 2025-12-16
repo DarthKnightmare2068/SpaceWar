@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -16,13 +17,34 @@ public class LaserAndThrusterBar : MonoBehaviour
     // References to player components
     private LaserActive laserSystem;
     private PlaneControl planeControl;
+    private float searchCooldown = 0f;
+    private const float SEARCH_INTERVAL = 0.5f;
+
+    void Start()
+    {
+        // Delay initialization to avoid startup lag
+        StartCoroutine(DelayedInitialization());
+    }
+
+    private IEnumerator DelayedInitialization()
+    {
+        // Wait a few frames for scene to initialize
+        yield return new WaitForSeconds(0.1f);
+        FindPlayerComponents();
+    }
 
     void Update()
     {
         // Continuously check for the player and its components in case they respawn.
-        if (laserSystem == null || planeControl == null || !laserSystem.gameObject.activeInHierarchy)
+        // Use cooldown to avoid checking every frame
+        if (laserSystem == null || planeControl == null || (laserSystem != null && !laserSystem.gameObject.activeInHierarchy))
         {
-            FindPlayerComponents();
+            searchCooldown -= Time.deltaTime;
+            if (searchCooldown <= 0f)
+            {
+                searchCooldown = SEARCH_INTERVAL;
+                FindPlayerComponents();
+            }
         }
 
         // --- Update Laser Bar ---
@@ -50,7 +72,26 @@ public class LaserAndThrusterBar : MonoBehaviour
 
     void FindPlayerComponents()
     {
-        GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+        GameObject playerObj = null;
+        
+        // Try cached GameManager reference first (no search)
+        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+        {
+            playerObj = GameManager.Instance.currentPlayer;
+            laserSystem = playerObj.GetComponent<LaserActive>();
+            planeControl = playerObj.GetComponent<PlaneControl>();
+            if (laserSystem != null && planeControl != null)
+            {
+                return;
+            }
+        }
+        
+        // Fallback to tag search only if needed
+        if (playerObj == null)
+        {
+            playerObj = GameObject.FindGameObjectWithTag("Player");
+        }
+        
         if (playerObj != null)
         {
             laserSystem = playerObj.GetComponent<LaserActive>();

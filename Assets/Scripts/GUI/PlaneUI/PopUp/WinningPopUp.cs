@@ -11,11 +11,29 @@ public class WinningPopUp : MonoBehaviour
     public float blinkInterval = 1f;
     [Tooltip("Whether the popup is currently active")]
     public bool isActive = false;
+    [Tooltip("Seconds after scene load before win detection is allowed")]
+    public float winCheckDelay = 3f;
 
     private Coroutine blinkCoroutine;
 
+    void Awake()
+    {
+        // Ensure popup is fully hidden on startup, even if not wired in inspector
+        if (winningPopupParent == null)
+        {
+            winningPopupParent = gameObject;
+        }
+
+        isActive = false;
+        if (winningPopupParent != null)
+        {
+            winningPopupParent.SetActive(false);
+        }
+    }
+
     void Start()
     {
+        // Redundant safety in case Awake didn't run for some reason
         if (winningPopupParent != null)
         {
             winningPopupParent.SetActive(false);
@@ -24,6 +42,10 @@ public class WinningPopUp : MonoBehaviour
 
     void Update()
     {
+        // Don't check for win until after initial spawn / intro delay
+        if (Time.timeSinceLevelLoad < winCheckDelay)
+            return;
+
         if (!isActive && AreAllEnemiesDestroyed())
         {
             ActivateWinningPopup();

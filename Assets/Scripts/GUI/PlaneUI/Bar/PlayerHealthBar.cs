@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -21,6 +22,26 @@ public class PlayerHealthBar : MonoBehaviour
 
     void Start()
     {
+        // Delay initialization to avoid startup lag - wait for player to spawn
+        StartCoroutine(DelayedInitialization());
+    }
+
+    private IEnumerator DelayedInitialization()
+    {
+        // Wait a few frames for scene to initialize
+        yield return new WaitForSeconds(0.1f);
+        
+        // Try to find player using cached GameManager reference first
+        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+        {
+            playerStats = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
+            if (playerStats != null)
+            {
+                yield break;
+            }
+        }
+        
+        // Fallback to tag search only if GameManager doesn't have player yet
         FindPlayer();
     }
 
@@ -57,6 +78,7 @@ public class PlayerHealthBar : MonoBehaviour
 
     void FindPlayer()
     {
+        // Always try GameManager first (cached reference, no search)
         if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
         {
             playerStats = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
@@ -66,6 +88,7 @@ public class PlayerHealthBar : MonoBehaviour
             }
         }
         
+        // Only use expensive tag search as last resort
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null)
         {

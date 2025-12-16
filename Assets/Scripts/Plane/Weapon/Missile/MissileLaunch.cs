@@ -21,6 +21,10 @@ public class MissileLaunch : MonoBehaviour
     
     public float damageAccumulated = 0f;
     
+    // Cached references to avoid FindObjectOfType calls
+    private AutoTargetLock cachedAutoTargetLock;
+    private TargetLockUI cachedTargetLockUI;
+    
     private void Start()
     {
         if (missilePrefab == null)
@@ -30,26 +34,48 @@ public class MissileLaunch : MonoBehaviour
         
         if (weaponManager == null)
         {
-            weaponManager = FindObjectOfType<PlayerWeaponManager>();
+            weaponManager = GetComponent<PlayerWeaponManager>();
+            if (weaponManager == null)
+                weaponManager = GetComponentInParent<PlayerWeaponManager>();
         }
-        playerPlane = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
+        
+        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+        {
+            playerPlane = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
+        }
+        
+        // Cache references once at Start instead of using FindObjectOfType in Update
+        cachedAutoTargetLock = GetComponent<AutoTargetLock>();
+        if (cachedAutoTargetLock == null)
+            cachedAutoTargetLock = GetComponentInParent<AutoTargetLock>();
+        
+        cachedTargetLockUI = FindObjectOfType<TargetLockUI>();
+        
         if (BulletPool.Instance != null)
         {
             BulletPool.Instance.RegisterProjectileType("Missile", missileLifetime);
         }
-        weaponManager.nextLaunchTime = 0f;
+        if (weaponManager != null)
+            weaponManager.nextLaunchTime = 0f;
         damageAccumulated = 0f;
     }
     
     private void Update()
     {
+        if (weaponManager == null) return;
+        
+        // Refresh cached references if they're null (lazy initialization)
+        RefreshCachedReferencesIfNeeded();
+        
         if (Input.GetKeyDown(KeyCode.C))
         {
             useAutoTargetLock = !useAutoTargetLock;
-            var targetLockUI = FindObjectOfType<TargetLockUI>();
-            if (targetLockUI != null)
-                targetLockUI.ShowMissileMode();
+            // Use cached reference instead of FindObjectOfType
+            if (cachedTargetLockUI != null)
+                cachedTargetLockUI.ShowMissileMode();
         }
+
+        
         if (Input.GetMouseButtonDown(1) && Time.time >= weaponManager.nextLaunchTime)
         {
             if (useAutoTargetLock)
@@ -61,6 +87,37 @@ public class MissileLaunch : MonoBehaviour
                 LaunchDumbMissile();
             }
             weaponManager.nextLaunchTime = Time.time + weaponManager.missileLaunchDelay;
+        }
+    }
+    
+    private void RefreshCachedReferencesIfNeeded()
+    {
+        // If cachedAutoTargetLock is null, try to find it
+        if (cachedAutoTargetLock == null)
+        {
+            // First try on this GameObject and parent
+            cachedAutoTargetLock = GetComponent<AutoTargetLock>();
+            if (cachedAutoTargetLock == null)
+                cachedAutoTargetLock = GetComponentInParent<AutoTargetLock>();
+            
+            // If still null, try to find via GameManager's current player
+            if (cachedAutoTargetLock == null && GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+            {
+                cachedAutoTargetLock = GameManager.Instance.currentPlayer.GetComponent<AutoTargetLock>();
+            }
+            
+            // Last resort: FindObjectOfType (only when cache is null)
+            if (cachedAutoTargetLock == null)
+            {
+                cachedAutoTargetLock = FindObjectOfType<AutoTargetLock>();
+            }
+            
+        }
+        
+        // Same for TargetLockUI
+        if (cachedTargetLockUI == null)
+        {
+            cachedTargetLockUI = FindObjectOfType<TargetLockUI>();
         }
     }
     
@@ -81,19 +138,27 @@ public class MissileLaunch : MonoBehaviour
     
     private void LaunchMissile()
     {
-        if (!weaponManager.CanFireMissile() || Time.time < weaponManager.nextLaunchTime) return;
+        if (!weaponManager.CanFireMissile() || Time.time < weaponManager.nextLaunchTime)
+        {
+            return;
+        }
 
-        AutoTargetLock autoTargetLock = FindObjectOfType<AutoTargetLock>();
+        // Ensure we have a valid AutoTargetLock reference
+        RefreshCachedReferencesIfNeeded();
+        
+        // Use cached reference, with fallback to FindObjectOfType if still null
+        AutoTargetLock autoTargetLock = cachedAutoTargetLock;
+        if (autoTargetLock == null)
+        {
+            autoTargetLock = FindObjectOfType<AutoTargetLock>();
+        }
+        
         Transform target = null;
         if (autoTargetLock != null && autoTargetLock.HasTarget())
         {
             target = autoTargetLock.GetLockedTarget();
             float distanceToTarget = Vector3.Distance(transform.position, target.position);
-            
-            if (distanceToTarget <= weaponManager.missileFireRange)
-            {
-            }
-            else
+            if (distanceToTarget > weaponManager.missileFireRange)
             {
                 return;
             }
@@ -103,11 +168,13 @@ public class MissileLaunch : MonoBehaviour
             return;
         }
 
+        int spawnedCount = 0;
         foreach (Transform spawnPoint in missileSpawnPoints)
         {
             if (spawnPoint != null)
             {
                 GameObject missile = Instantiate(missilePrefab, spawnPoint.position, spawnPoint.rotation);
+                spawnedCount++;
                 
                 MissileAutoLock missileLock = missile.GetComponent<MissileAutoLock>();
                 if (missileLock != null)
@@ -125,6 +192,9 @@ public class MissileLaunch : MonoBehaviour
                 missile.layer = LayerMask.NameToLayer("Player");
                 missile.tag = "PlayerWeapon";
             }
+            else
+            {
+            }
         }
 
         weaponManager.UseMissile();
@@ -137,13 +207,21 @@ public class MissileLaunch : MonoBehaviour
     
     private void LaunchDumbMissile()
     {
-        if (!weaponManager.CanFireMissile() || Time.time < weaponManager.nextLaunchTime) return;
+        if (!weaponManager.CanFireMissile() || Time.time < weaponManager.nextLaunchTime)
+        {
+            return;
+        }
+        
         Ray guideRay = weaponManager.GetCurrentTargetRay();
+        
+        int spawnedCount = 0;
         foreach (Transform spawnPoint in missileSpawnPoints)
         {
             if (spawnPoint != null)
             {
                 GameObject missile = Instantiate(missilePrefab, spawnPoint.position, Quaternion.LookRotation(guideRay.direction));
+                spawnedCount++;
+                
                 MissileController missileController = missile.GetComponent<MissileController>();
                 if (missileController != null)
                 {
@@ -155,6 +233,7 @@ public class MissileLaunch : MonoBehaviour
                 missile.tag = "PlayerWeapon";
             }
         }
+        
         weaponManager.UseMissile();
         if (AudioSetting.Instance != null && AudioSetting.Instance.missileSound != null)
         {
@@ -179,4 +258,5 @@ public class MissileLaunch : MonoBehaviour
     {
         return Mathf.Max(0f, weaponManager.nextLaunchTime - Time.time);
     }
+    
 }

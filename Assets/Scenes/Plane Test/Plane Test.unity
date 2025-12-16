@@ -1090,6 +1090,7 @@ MonoBehaviour:
   targetFPS: 60
   enemyDestroyedClip: {fileID: 8300000, guid: a376938cd0d7b434dbc2c1c39066e71d, type: 3}
   enemyDestroyedVolume: 1
+  spawnDelayFrames: 2
 --- !u!4 &314304967
 Transform:
   m_ObjectHideFlags: 0
@@ -1211,6 +1212,7 @@ MonoBehaviour:
   winningPopupParent: {fileID: 799396227}
   blinkInterval: 1
   isActive: 0
+  winCheckDelay: 3
 --- !u!1 &529759345
 GameObject:
   m_ObjectHideFlags: 0
@@ -6178,7 +6180,6 @@ MonoBehaviour:
   weaponManager: {fileID: 0}
   missileLaunch: {fileID: 0}
   laserActive: {fileID: 0}
-  showDebugLogs: 1
   CheatHp: {fileID: 1731129165491160178}
   MissileModeText: {fileID: 2538736538978352358}
 --- !u!224 &2870631246999151404

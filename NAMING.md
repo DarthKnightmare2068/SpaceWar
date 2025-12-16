@@ -2,7 +2,7 @@
 
 This document summarizes all the key variable names, classes, and their purposes throughout the SpaceWar Unity project.
 
-**Last Updated:** Debug logs removed from all scripts.
+**Last Updated:** Missile launch refactor + enemy manager fixes.
 
 ---
 
@@ -249,6 +249,8 @@ This document summarizes all the key variable names, classes, and their purposes
 | `missileSpawnPoints` | `List<Transform>` | Spawn points for missiles |
 | `useAutoTargetLock` | `bool` | Use auto-lock or dumb-fire mode |
 | `damageAccumulated` | `float` | Damage accumulated for missile reload |
+| `cachedAutoTargetLock` | `AutoTargetLock` | Cached targeting component (with lazy refresh fallback) |
+| `cachedTargetLockUI` | `TargetLockUI` | Cached UI reference for missile mode display |
 
 ### MissileController (`Assets/Scripts/Plane/Weapon/Missile/MissileController.cs`)
 | Variable | Type | Purpose |

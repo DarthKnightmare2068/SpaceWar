@@ -135,6 +135,9 @@ public class TurretsManager : MonoBehaviour
 
         foreach (var player in players)
         {
+            // Skip destroyed players to avoid MissingReferenceException when accessing position
+            if (player == null) continue;
+            
             List<TurretControl> sortedTurrets = new List<TurretControl>(turrets);
             sortedTurrets.Sort((a, b) =>
             {

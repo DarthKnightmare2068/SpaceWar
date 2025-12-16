@@ -64,10 +64,7 @@ public class SmallCanonManager : MonoBehaviour
             if (reviveTimer <= 0f)
             {
                 reviveTimerRunning = false;
-                if (currentCanonCount > 0)
-                {
-                    ReviveAllCanons();
-                }
+                ReviveAllCanons();
             }
         }
 

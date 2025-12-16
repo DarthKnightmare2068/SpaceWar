@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using TMPro;
 
@@ -13,6 +14,14 @@ public class SpeedDisplay : MonoBehaviour
 
     void Start()
     {
+        // Delay initialization to avoid startup lag
+        StartCoroutine(DelayedInitialization());
+    }
+
+    private IEnumerator DelayedInitialization()
+    {
+        // Wait a few frames for scene to initialize
+        yield return new WaitForSeconds(0.1f);
         FindPlayer();
     }
 
@@ -34,6 +43,17 @@ public class SpeedDisplay : MonoBehaviour
 
     void FindPlayer()
     {
+        // Try cached GameManager reference first (no search)
+        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+        {
+            currentPlayer = GameManager.Instance.currentPlayer.GetComponent<PlaneControl>();
+            if (currentPlayer != null)
+            {
+                return;
+            }
+        }
+        
+        // Fallback to tag search
         GameObject player = GameObject.FindGameObjectWithTag("Player");
         if(player != null)
         {
@@ -44,6 +64,7 @@ public class SpeedDisplay : MonoBehaviour
             }
         }
 
+        // Last resort: FindObjectsOfType (expensive, avoid if possible)
         PlaneControl[] planeControls = FindObjectsOfType<PlaneControl>();
         if(planeControls.Length > 0)
         {

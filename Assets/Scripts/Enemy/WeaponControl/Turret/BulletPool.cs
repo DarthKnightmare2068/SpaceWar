@@ -21,9 +21,25 @@ public class BulletPool : MonoBehaviour
 
     private void Start()
     {
-        for(int i = 0; i < poolSize; i++)
+        // Spread pool initialization across frames to prevent startup lag
+        StartCoroutine(InitializePoolAsync());
+    }
+
+    private IEnumerator InitializePoolAsync()
+    {
+        // Create bullets in batches to avoid frame spikes
+        int bulletsPerFrame = 10;
+        int created = 0;
+        
+        while (created < poolSize)
         {
-            CreateNewBullet();
+            int toCreate = Mathf.Min(bulletsPerFrame, poolSize - created);
+            for (int i = 0; i < toCreate; i++)
+            {
+                CreateNewBullet();
+                created++;
+            }
+            yield return null; // Wait one frame between batches
         }
     }
 
