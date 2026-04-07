@@ -24,6 +24,14 @@ public class EnemyStats : MonoBehaviour, IHasHealth
 
     private float forceRespawnTimer = -1f;
     private const float FORCE_RESPAWN_DELAY = 10f;
+    // Bolt: Optimized - Caching BigCanon references to avoid repeated GetComponentsInChildren calls in performance-critical paths
+    private BigCanon[] cachedBigCanons;
+
+    void Awake()
+    {
+        // Bolt: Cache references on Awake to ensure they're available for TakeDamage even if called before Start
+        cachedBigCanons = GetComponentsInChildren<BigCanon>(true);
+    }
 
     void Start()
     {
@@ -53,11 +61,13 @@ public class EnemyStats : MonoBehaviour, IHasHealth
                         allWeaponsInactive = false;
                 }
             }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
+            if (cachedBigCanons != null)
             {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
+                foreach (var bigCanon in cachedBigCanons)
+                {
+                    if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
+                        allWeaponsInactive = false;
+                }
             }
             if (!allWeaponsInactive)
             {
@@ -108,11 +118,13 @@ public class EnemyStats : MonoBehaviour, IHasHealth
                         allWeaponsInactive = false;
                 }
             }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
+            if (cachedBigCanons != null)
             {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
+                foreach (var bigCanon in cachedBigCanons)
+                {
+                    if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
+                        allWeaponsInactive = false;
+                }
             }
         }
 

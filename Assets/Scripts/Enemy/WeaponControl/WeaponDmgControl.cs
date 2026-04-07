@@ -35,6 +35,14 @@ public class WeaponDmgControl : MonoBehaviour
     public float bigCannonReviveTime = 90f;
     private float bigCannonReviveTimer = 0f;
     private bool bigCannonReviveTimerRunning = false;
+    // Bolt: Optimized - Caching BigCanon references to avoid expensive FindObjectsOfType/GetComponentsInChildren calls in performance-critical paths
+    private BigCanon[] cachedBigCanons;
+
+    void Awake()
+    {
+        // Bolt: Cache references on Awake to transform O(SceneSize) lookup into O(1) array access
+        cachedBigCanons = GetComponentsInChildren<BigCanon>(true);
+    }
 
     void Update()
     {
@@ -157,8 +165,9 @@ public class WeaponDmgControl : MonoBehaviour
 
     public void ReviveAllBigCanons()
     {
-        BigCanon[] bigCanons = GameObject.FindObjectsOfType<BigCanon>(true);
-        foreach (var bigCanon in bigCanons)
+        if (cachedBigCanons == null) return;
+
+        foreach (var bigCanon in cachedBigCanons)
         {
             if (bigCanon != null)
             {
