@@ -1,0 +1,3 @@
+## 2024-05-14 - [Global vs Local Search in Multi-instance Prefabs]
+**Learning:** The codebase occasionally uses global search methods like `GameObject.FindObjectsOfType` when local scope (`GetComponentsInChildren`) is intended. In multi-instance scenarios (e.g., multiple enemy ships), this causes "cross-talk" where one instance's logic affects all others in the scene, in addition to being a major performance bottleneck.
+**Action:** When encountering `Find` or `FindObjectsOfType` in scripts that are likely to have multiple instances, always verify if the scope should be restricted to the local transform hierarchy and replace with cached `GetComponent` calls.

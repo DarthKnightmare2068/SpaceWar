@@ -111,7 +111,8 @@ public class BigCanon : MonoBehaviour
             if (playerSearchCooldown <= 0f)
             {
                 playerSearchCooldown = PLAYER_SEARCH_INTERVAL;
-                GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+                // Bolt: Optimized - Use GameManager instance instead of expensive FindGameObjectWithTag
+                GameObject playerObject = (GameManager.Instance != null) ? GameManager.Instance.currentPlayer : GameObject.FindGameObjectWithTag("Player");
                 if (playerObject != null)
                 {
                     enemy = playerObject.transform;
@@ -180,7 +181,8 @@ public class BigCanon : MonoBehaviour
     {
         if (enemy == null)
         {
-            GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+            // Bolt: Optimized - Use GameManager instance instead of expensive FindGameObjectWithTag
+            GameObject playerObject = (GameManager.Instance != null) ? GameManager.Instance.currentPlayer : GameObject.FindGameObjectWithTag("Player");
             if (playerObject != null)
             {
                 enemy = playerObject.transform;

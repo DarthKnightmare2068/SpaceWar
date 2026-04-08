@@ -22,12 +22,17 @@ public class EnemyStats : MonoBehaviour, IHasHealth
     [Tooltip("Reference to the WeaponDmgControl managing this enemy's weapons.")]
     public WeaponDmgControl weaponDmgControl;
 
+    // Bolt: Optimized - Cache BigCanon components to avoid per-frame GetComponentsInChildren calls
+    private BigCanon[] cachedBigCanons;
+
     private float forceRespawnTimer = -1f;
     private const float FORCE_RESPAWN_DELAY = 10f;
 
     void Start()
     {
         currentHP = maxHP;
+        // Bolt: Optimized - Cache components at start
+        cachedBigCanons = GetComponentsInChildren<BigCanon>(true);
     }
 
     public void TakeDamage(float amount)
@@ -53,12 +58,17 @@ public class EnemyStats : MonoBehaviour, IHasHealth
                         allWeaponsInactive = false;
                 }
             }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
+
+            // Bolt: Optimized - Use cached components
+            if (cachedBigCanons != null)
             {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
+                foreach (var bigCanon in cachedBigCanons)
+                {
+                    if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
+                        allWeaponsInactive = false;
+                }
             }
+
             if (!allWeaponsInactive)
             {
                 return;
@@ -108,11 +118,15 @@ public class EnemyStats : MonoBehaviour, IHasHealth
                         allWeaponsInactive = false;
                 }
             }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
+
+            // Bolt: Optimized - Use cached components
+            if (cachedBigCanons != null)
             {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
+                foreach (var bigCanon in cachedBigCanons)
+                {
+                    if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
+                        allWeaponsInactive = false;
+                }
             }
         }
 
