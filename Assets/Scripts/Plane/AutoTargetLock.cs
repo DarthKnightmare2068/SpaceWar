@@ -109,8 +109,40 @@ public class AutoTargetLock : MonoBehaviour
         
         if (weaponManager == null) return;
         
+        // Bolt: Optimized - Use GameManager cached lists to avoid expensive scene-wide tag searches
+        if (GameManager.Instance != null)
+        {
+            var ships = GameManager.Instance.GetActiveEnemyShips();
+            if (ships != null)
+            {
+                foreach (var ship in ships)
+                {
+                    if (ship == null || !ship.activeInHierarchy) continue;
+                    float distance = Vector3.Distance(transform.position, ship.transform.position);
+                    if (distance <= weaponManager.missileFireRange)
+                    {
+                        enemiesInRange.Add(ship.transform);
+                    }
+                }
+            }
+
+            if (GameManager.Instance.currentBoss != null && GameManager.Instance.currentBoss.activeInHierarchy)
+            {
+                float distance = Vector3.Distance(transform.position, GameManager.Instance.currentBoss.transform.position);
+                if (distance <= weaponManager.missileFireRange)
+                {
+                    enemiesInRange.Add(GameManager.Instance.currentBoss.transform);
+                }
+            }
+        }
+
+        bool gameManagerAvailable = GameManager.Instance != null;
+
         foreach (string tag in targetTags)
         {
+            // Skip "Enemy" tag as it is already handled more efficiently above if GameManager is available
+            if (gameManagerAvailable && tag == "Enemy") continue;
+
             GameObject[] candidates = GameObject.FindGameObjectsWithTag(tag);
             foreach (GameObject obj in candidates)
             {

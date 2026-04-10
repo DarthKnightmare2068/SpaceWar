@@ -53,8 +53,8 @@ public class SpeedDisplay : MonoBehaviour
             }
         }
         
-        // Fallback to tag search
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        // Fallback to GameManager (already tried, but for safety in case it was null before)
+        GameObject player = GameManager.Instance != null ? GameManager.Instance.currentPlayer : null;
         if(player != null)
         {
             currentPlayer = player.GetComponent<PlaneControl>();

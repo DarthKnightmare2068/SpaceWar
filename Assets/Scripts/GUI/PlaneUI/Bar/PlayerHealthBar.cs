@@ -88,8 +88,8 @@ public class PlayerHealthBar : MonoBehaviour
             }
         }
         
-        // Only use expensive tag search as last resort
-        GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+        // Fallback to GameManager (already tried, but for safety)
+        GameObject playerObj = GameManager.Instance != null ? GameManager.Instance.currentPlayer : null;
         if (playerObj != null)
         {
             playerStats = playerObj.GetComponent<PlaneStats>();

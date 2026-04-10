@@ -51,7 +51,7 @@ public class MachineGunControl : MonoBehaviour
         }
         if (playerPlane == null)
         {
-            var foundPlayer = GameObject.FindGameObjectWithTag("Player");
+            var foundPlayer = GameManager.Instance != null ? GameManager.Instance.currentPlayer : null;
             if (foundPlayer != null)
                 playerPlane = foundPlayer.GetComponent<PlaneStats>();
         }

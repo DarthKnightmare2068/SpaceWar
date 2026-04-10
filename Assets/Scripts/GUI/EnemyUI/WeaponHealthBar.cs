@@ -175,7 +175,7 @@ public class WeaponHealthBar : MonoBehaviour
             return;
         }
         
-        GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+        GameObject playerObj = GameManager.Instance != null ? GameManager.Instance.currentPlayer : null;
         if (playerObj != null)
         {
             playerTransform = playerObj.transform;

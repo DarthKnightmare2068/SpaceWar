@@ -121,7 +121,7 @@ public class LevelUpSystem : MonoBehaviour
         }
         else
         {
-            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+            GameObject playerObj = GameManager.Instance != null ? GameManager.Instance.currentPlayer : null;
             if (playerObj != null)
             {
                 playerPlane = playerObj.GetComponent<PlaneStats>();
@@ -163,33 +163,85 @@ public class LevelUpSystem : MonoBehaviour
 
     private void TrackWeaponsByTag(string tag)
     {
+        // Bolt: Optimized - avoid scene-wide tag searches by traversing active ships and boss
+        if (GameManager.Instance != null)
+        {
+            var ships = GameManager.Instance.GetActiveEnemyShips();
+            if (ships != null)
+            {
+                foreach (var ship in ships)
+                {
+                    if (ship != null)
+                    {
+                        AddTrackedWeaponsFromParent(ship);
+                    }
+                }
+            }
+            
+            if (GameManager.Instance.currentBoss != null)
+            {
+                AddTrackedWeaponsFromParent(GameManager.Instance.currentBoss);
+            }
+            
+            // Also handle the specific tag requested, in case it's not part of the standard enemy ships/boss
+            // But we only do this if it's NOT one of the standard tags already covered
+            if (tag != "Turret" && tag != "SmallCanon" && tag != "BigCanon" && tag != "Enemy")
+            {
+                GameObject[] weapons = GameObject.FindGameObjectsWithTag(tag);
+                foreach (var weaponObj in weapons)
+                {
+                    if (weaponObj == null) continue;
+                    AddTrackedWeapon(weaponObj);
+                }
+            }
+
+            return;
+        }
+
+        // Fallback to tag search if GameManager is not available
         GameObject[] weapons = GameObject.FindGameObjectsWithTag(tag);
         foreach (var weaponObj in weapons)
         {
             if (weaponObj == null) continue;
-            
-            var turret = weaponObj.GetComponent<TurretControl>();
-            if (turret != null && !trackedTargets.Contains(turret))
-            {
-                trackedTargets.Add(turret);
-                lastHP[turret] = turret.currentHP;
-                continue;
-            }
-            
-            var smallCanon = weaponObj.GetComponent<SmallCanonControl>();
-            if (smallCanon != null && !trackedTargets.Contains(smallCanon))
-            {
-                trackedTargets.Add(smallCanon);
-                lastHP[smallCanon] = smallCanon.currentHP;
-                continue;
-            }
-            
-            var bigCanon = weaponObj.GetComponent<BigCanon>();
-            if (bigCanon != null && !trackedTargets.Contains(bigCanon))
-            {
-                trackedTargets.Add(bigCanon);
-                lastHP[bigCanon] = bigCanon.currentHP;
-            }
+            AddTrackedWeapon(weaponObj);
+        }
+    }
+
+    private void AddTrackedWeaponsFromParent(GameObject parent)
+    {
+        var turrets = parent.GetComponentsInChildren<TurretControl>(true);
+        foreach (var t in turrets) AddTrackedWeapon(t.gameObject);
+
+        var cannons = parent.GetComponentsInChildren<SmallCanonControl>(true);
+        foreach (var c in cannons) AddTrackedWeapon(c.gameObject);
+
+        var bigCannons = parent.GetComponentsInChildren<BigCanon>(true);
+        foreach (var bc in bigCannons) AddTrackedWeapon(bc.gameObject);
+    }
+
+    private void AddTrackedWeapon(GameObject weaponObj)
+    {
+        var turret = weaponObj.GetComponent<TurretControl>();
+        if (turret != null && !trackedTargets.Contains(turret))
+        {
+            trackedTargets.Add(turret);
+            lastHP[turret] = turret.currentHP;
+            return;
+        }
+
+        var smallCanon = weaponObj.GetComponent<SmallCanonControl>();
+        if (smallCanon != null && !trackedTargets.Contains(smallCanon))
+        {
+            trackedTargets.Add(smallCanon);
+            lastHP[smallCanon] = smallCanon.currentHP;
+            return;
+        }
+
+        var bigCanon = weaponObj.GetComponent<BigCanon>();
+        if (bigCanon != null && !trackedTargets.Contains(bigCanon))
+        {
+            trackedTargets.Add(bigCanon);
+            lastHP[bigCanon] = bigCanon.currentHP;
         }
     }
 

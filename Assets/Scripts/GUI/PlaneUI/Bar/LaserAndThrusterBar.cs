@@ -86,10 +86,10 @@ public class LaserAndThrusterBar : MonoBehaviour
             }
         }
         
-        // Fallback to tag search only if needed
+        // Fallback to GameManager if needed
         if (playerObj == null)
         {
-            playerObj = GameObject.FindGameObjectWithTag("Player");
+            playerObj = GameManager.Instance != null ? GameManager.Instance.currentPlayer : null;
         }
         
         if (playerObj != null)

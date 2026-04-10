@@ -82,7 +82,7 @@ public class TargetLockUI : MonoBehaviour
         }
         else
         {
-            cachedPlayer = GameObject.FindGameObjectWithTag("Player");
+            cachedPlayer = GameManager.Instance != null ? GameManager.Instance.currentPlayer : null;
             if (cachedPlayer != null)
             {
                 CachePlayerComponents();

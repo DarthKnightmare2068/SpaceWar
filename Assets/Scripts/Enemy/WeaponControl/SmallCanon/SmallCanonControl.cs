@@ -113,7 +113,7 @@ public class SmallCanonControl : MonoBehaviour
             if (playerSearchCooldown <= 0f)
             {
                 playerSearchCooldown = PLAYER_SEARCH_INTERVAL;
-                GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+                GameObject playerObject = GameManager.Instance != null ? GameManager.Instance.currentPlayer : null;
                 if (playerObject != null)
                 {
                     enemy = playerObject.transform;
@@ -182,7 +182,7 @@ public class SmallCanonControl : MonoBehaviour
     {
         if (enemy == null)
         {
-            GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+            GameObject playerObject = GameManager.Instance != null ? GameManager.Instance.currentPlayer : null;
             if (playerObject != null)
             {
                 enemy = playerObject.transform;
