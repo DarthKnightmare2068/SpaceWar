@@ -25,9 +25,13 @@ public class EnemyStats : MonoBehaviour, IHasHealth
     private float forceRespawnTimer = -1f;
     private const float FORCE_RESPAWN_DELAY = 10f;
 
+    // Bolt: Optimized - Cache BigCanon components to avoid expensive GetComponentsInChildren calls in Update/TakeDamage
+    private BigCanon[] cachedBigCanons;
+
     void Start()
     {
         currentHP = maxHP;
+        cachedBigCanons = GetComponentsInChildren<BigCanon>(true);
     }
 
     public void TakeDamage(float amount)
@@ -53,8 +57,9 @@ public class EnemyStats : MonoBehaviour, IHasHealth
                         allWeaponsInactive = false;
                 }
             }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
+
+            // Bolt: Optimized - Use cached components
+            foreach (var bigCanon in cachedBigCanons)
             {
                 if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
                     allWeaponsInactive = false;
@@ -108,8 +113,9 @@ public class EnemyStats : MonoBehaviour, IHasHealth
                         allWeaponsInactive = false;
                 }
             }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
+
+            // Bolt: Optimized - Use cached components
+            foreach (var bigCanon in cachedBigCanons)
             {
                 if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
                     allWeaponsInactive = false;
