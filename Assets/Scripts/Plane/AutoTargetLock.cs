@@ -33,7 +33,13 @@ public class AutoTargetLock : MonoBehaviour
     private List<Transform> enemiesInRange = new List<Transform>();
     private float nextEnemyScanTime = 0f;
     private bool isInitialized = false;
+    private Transform cachedTransform;
     
+    void Awake()
+    {
+        cachedTransform = transform;
+    }
+
     void Start()
     {
         InitializeReferences();
@@ -87,7 +93,7 @@ public class AutoTargetLock : MonoBehaviour
             }
             else
             {
-                distanceToTarget = Vector3.Distance(transform.position, lockedTarget.position);
+                distanceToTarget = Vector3.Distance(cachedTransform.position, lockedTarget.position);
                 isTargetInLockCircle = IsInLockCircle(lockedTarget);
                 
                 if (!isTargetInLockCircle)
@@ -107,19 +113,34 @@ public class AutoTargetLock : MonoBehaviour
     {
         enemiesInRange.Clear();
         
-        if (weaponManager == null) return;
+        if (weaponManager == null || GameManager.Instance == null) return;
         
-        foreach (string tag in targetTags)
+        float sqrMissileRange = weaponManager.missileFireRange * weaponManager.missileFireRange;
+        Vector3 myPos = cachedTransform.position;
+
+        // Bolt: Optimized - Use GameManager's active ships list instead of FindGameObjectsWithTag
+        var activeShips = GameManager.Instance.GetActiveEnemyShips();
+        if (activeShips != null)
         {
-            GameObject[] candidates = GameObject.FindGameObjectsWithTag(tag);
-            foreach (GameObject obj in candidates)
+            foreach (var ship in activeShips)
             {
-                if (obj == null || !obj.activeInHierarchy) continue;
-                float distance = Vector3.Distance(transform.position, obj.transform.position);
-                if (distance <= weaponManager.missileFireRange)
+                if (ship == null || !ship.activeInHierarchy) continue;
+
+                // Bolt: Optimized - Use sqrMagnitude instead of Distance to avoid square root
+                if ((ship.transform.position - myPos).sqrMagnitude <= sqrMissileRange)
                 {
-                    enemiesInRange.Add(obj.transform);
+                    enemiesInRange.Add(ship.transform);
                 }
+            }
+        }
+
+        // Bolt: Optimized - Also check the boss
+        GameObject boss = GameManager.Instance.currentBoss;
+        if (boss != null && boss.activeInHierarchy)
+        {
+            if ((boss.transform.position - myPos).sqrMagnitude <= sqrMissileRange)
+            {
+                enemiesInRange.Add(boss.transform);
             }
         }
     }
@@ -127,8 +148,12 @@ public class AutoTargetLock : MonoBehaviour
     void TryLockNewTarget()
     {
         Transform bestTarget = null;
-        float bestDistance = float.MaxValue;
+        float bestSqrDistance = float.MaxValue;
         
+        if (weaponManager == null) return;
+        float sqrMissileRange = weaponManager.missileFireRange * weaponManager.missileFireRange;
+        Vector3 myPos = cachedTransform.position;
+
         foreach (Transform enemy in enemiesInRange)
         {
             if (enemy == null || !enemy.gameObject.activeInHierarchy) continue;
@@ -139,13 +164,14 @@ public class AutoTargetLock : MonoBehaviour
             
             if (lockTarget != null)
             {
-                float distance = Vector3.Distance(transform.position, lockTarget.position);
-                if (distance <= weaponManager.missileFireRange && distance < bestDistance)
+                float sqrDist = (lockTarget.position - myPos).sqrMagnitude;
+
+                if (sqrDist <= sqrMissileRange && sqrDist < bestSqrDistance)
                 {
                     if (!requireLineOfSight || HasLineOfSight(lockTarget))
                     {
                         bestTarget = lockTarget;
-                        bestDistance = distance;
+                        bestSqrDistance = sqrDist;
                     }
                 }
             }
@@ -209,8 +235,10 @@ public class AutoTargetLock : MonoBehaviour
         if (!target.gameObject.activeInHierarchy) return false;
         if (weaponManager == null) return false;
         
-        float distance = Vector3.Distance(transform.position, target.position);
-        if (distance > weaponManager.missileFireRange) return false;
+        // Bolt: Optimized - Use sqrMagnitude instead of Distance
+        float sqrDist = (target.position - cachedTransform.position).sqrMagnitude;
+        float sqrMissileRange = weaponManager.missileFireRange * weaponManager.missileFireRange;
+        if (sqrDist > sqrMissileRange) return false;
         
         if (targetingCamera == null) return false;
         Vector3 viewportPos = targetingCamera.WorldToViewportPoint(target.position);
@@ -242,7 +270,7 @@ public class AutoTargetLock : MonoBehaviour
         if (lockedTarget == target) return;
         
         lockedTarget = target;
-        distanceToTarget = Vector3.Distance(transform.position, target.position);
+        distanceToTarget = Vector3.Distance(cachedTransform.position, target.position);
         isTargetInLockCircle = true;
         
         OnTargetLocked?.Invoke(target);
