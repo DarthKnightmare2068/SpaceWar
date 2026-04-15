@@ -103,9 +103,10 @@ public class TurretControl : MonoBehaviour
         if(enemy != null)
         {
             directionToEnemy = enemy.position - gunBarrel.position;
-            float distanceToEnemy = Vector3.Distance(gunBarrel.position, enemy.position);
+            // Bolt: Use sqrMagnitude to avoid expensive square root
+            float distanceToEnemySqr = directionToEnemy.sqrMagnitude;
 
-            if(distanceToEnemy < howCloseToEnemy)
+            if(distanceToEnemySqr < (howCloseToEnemy * howCloseToEnemy))
             {
                 Quaternion targetRotation = Quaternion.LookRotation(directionToEnemy);
 
