@@ -1,0 +1,3 @@
+## 2025-04-17 - Throttled Targeting vs. Per-Frame Tracking
+**Learning:** High-frequency operations like `GameObject.FindGameObjectsWithTag` and `List.Sort` in `Update()` are significant CPU bottlenecks. However, simply throttling the entire system can cause "jittery" rotation if tracking depends on those results. Separating target *assignment* (throttled) from target *tracking* (per-frame using cached results) maintains smoothness while significantly reducing load.
+**Action:** When optimizing Unity targeting systems, cache the target and perform the heavy selection logic at a lower frequency (e.g., 5-10Hz), while continuing to update rotation/positioning every frame.
