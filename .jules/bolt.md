@@ -1,0 +1,4 @@
+
+## 2026-04-18 - Optimizing Tag-based Searches with Physics Queries
+**Learning:** Using 'GameObject.FindGameObjectsWithTag' in hot paths like Update() or throttled timers is extremely inefficient in Unity as it performs a linear scan of all scene objects. 'Physics.OverlapSphereNonAlloc' is a superior alternative for distance-limited searches because it leverages spatial partitioning. However, when replacing tag searches with physics queries, you must account for child colliders by traversing up the parent hierarchy to find the actual tagged object, as 'OverlapSphere' returns individual colliders which might not be on the tagged root object.
+**Action:** Always prefer 'Physics.OverlapSphereNonAlloc' for localized object detection and implement parent-traversal logic to maintain tag-searching parity.
