@@ -30,6 +30,7 @@ public class BigCanon : MonoBehaviour
     private float damage = 100f;
     private float fireRate = 0.1f;
     private float fireRange = 200f;
+    private float fireRangeSqr;
     private float nextFireTime;
 
     public int maxHP = 200;
@@ -77,6 +78,7 @@ public class BigCanon : MonoBehaviour
         currentHP = maxHP;
         trackPlayerInstantly = true;
         InitializeStats();
+        fireRangeSqr = fireRange * fireRange;
         FindPlayerTarget();
         StopLaserVFX();
         
@@ -283,7 +285,8 @@ public class BigCanon : MonoBehaviour
             return;
         }
 
-        float distanceToEnemy = Vector3.Distance(transform.position, enemy.position);
+        // Bolt: Optimized using sqrMagnitude and cached squared fire range
+        float sqrDistanceToEnemy = (transform.position - enemy.position).sqrMagnitude;
         bool canAimAtPlayer = CheckIfCanAimAtPlayer();
         
         if (!canAimAtPlayer && !isPlayerInRotationLimit)
@@ -309,7 +312,7 @@ public class BigCanon : MonoBehaviour
             }
         }
 
-        if (distanceToEnemy <= fireRange && canAimAtPlayer)
+        if (sqrDistanceToEnemy <= fireRangeSqr && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;

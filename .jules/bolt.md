@@ -1,0 +1,3 @@
+## 2025-05-14 - Optimized Enemy Targeting Overhead
+**Learning:** High-frequency sorting of objects by distance using `Vector3.Distance` and creating new collections (`new List`, `new HashSet`) in `Update` loops are major sources of CPU and GC overhead in Unity. Throttling the assignment logic to 5Hz while maintaining per-frame tracking via cached targets preserves visual smoothness while significantly reducing frame time.
+**Action:** Always prefer `sqrMagnitude` for distance comparisons, reuse collection member variables, and throttle complex AI/targeting logic that doesn't require frame-perfect updates.

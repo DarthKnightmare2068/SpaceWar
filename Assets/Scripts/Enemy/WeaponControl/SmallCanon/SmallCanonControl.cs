@@ -30,6 +30,7 @@ public class SmallCanonControl : MonoBehaviour
     private float damage;
     private float fireRate;
     private float fireRange;
+    private float fireRangeSqr;
     private float nextFireTime;
 
     public int maxHP = 100;
@@ -79,6 +80,7 @@ public class SmallCanonControl : MonoBehaviour
         }
 
         InitializeStats();
+        fireRangeSqr = fireRange * fireRange;
         FindPlayerTarget();
         StopLaserVFX();
         
@@ -297,7 +299,8 @@ public class SmallCanonControl : MonoBehaviour
             return;
         }
 
-        float distanceToEnemy = Vector3.Distance(transform.position, enemy.position);
+        // Bolt: Optimized using sqrMagnitude and cached squared fire range
+        float sqrDistanceToEnemy = (transform.position - enemy.position).sqrMagnitude;
         bool canAimAtPlayer = CheckIfCanAimAtPlayer();
         
         if (!canAimAtPlayer && !isPlayerInRotationLimit)
@@ -323,7 +326,7 @@ public class SmallCanonControl : MonoBehaviour
             }
         }
 
-        if (distanceToEnemy <= fireRange && canAimAtPlayer)
+        if (sqrDistanceToEnemy <= fireRangeSqr && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;
