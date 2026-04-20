@@ -23,6 +23,7 @@ public class TurretsManager : MonoBehaviour
     public bool trackPlayerInstantly = false;
 
     private float howCloseToPlayer;
+    private float sqrHowCloseToPlayer; // Bolt: Cached squared distance for performance
     private List<Transform> players = new List<Transform>();
     private Dictionary<TurretControl, Transform> turretTargets = new Dictionary<TurretControl, Transform>();
 
@@ -33,6 +34,10 @@ public class TurretsManager : MonoBehaviour
     private const float PLAYER_LIST_UPDATE_INTERVAL = 0.5f;
 
     private WeaponDmgControl cachedDmgControl;
+
+    // Bolt: Reuse collections to avoid per-frame allocations
+    private List<TurretControl> sortedTurrets = new List<TurretControl>();
+    private HashSet<TurretControl> assignedTurrets = new HashSet<TurretControl>();
 
     void Awake()
     {
@@ -52,6 +57,7 @@ public class TurretsManager : MonoBehaviour
         {
             howCloseToPlayer = 100f;
         }
+        sqrHowCloseToPlayer = howCloseToPlayer * howCloseToPlayer;
 
         SetAllTurretsHP();
         maxTurretCount = turrets.Count;
@@ -62,6 +68,8 @@ public class TurretsManager : MonoBehaviour
             if (turret != null)
                 turret.SetTrackingMode(trackPlayerInstantly);
         }
+
+        sortedTurrets.Capacity = turrets.Count;
     }
 
     void Update()
@@ -74,9 +82,11 @@ public class TurretsManager : MonoBehaviour
         {
             playerListUpdateTimer = 0f;
             UpdatePlayersList();
+            AssignTurretsToPlayers(); // Bolt: Throttled assignment to 2Hz
         }
         
-        AssignTurretsToPlayers();
+        // Bolt: Execute tracking/firing every frame using cached assignments
+        ExecuteTurretLogic();
 
         backupRefreshTimer += Time.deltaTime;
         if (backupRefreshTimer >= BACKUP_REFRESH_INTERVAL)
@@ -84,11 +94,23 @@ public class TurretsManager : MonoBehaviour
             backupRefreshTimer = 0f;
             ForceRefreshAllTurretTargeting();
         }
+    }
 
+    /// <summary>
+    /// Bolt: Optimized per-frame turret logic. Uses cached targets to avoid re-calculating assignments every frame.
+    /// </summary>
+    void ExecuteTurretLogic()
+    {
         foreach (var turret in turrets)
         {
-            if (turret != null)
-                turret.SetTrackingMode(trackPlayerInstantly);
+            if (turret == null) continue;
+
+            Transform target = null;
+            turretTargets.TryGetValue(turret, out target);
+
+            // Unity's null check handles destroyed transforms
+            turret.ControlTurret(target, howCloseToPlayer);
+            turret.SetTrackingMode(trackPlayerInstantly);
         }
     }
 
@@ -112,16 +134,19 @@ public class TurretsManager : MonoBehaviour
     void UpdatePlayersList()
     {
         players.Clear();
-        foreach(var playerObj in GameObject.FindGameObjectsWithTag("Player"))
-        {
-            var stats = playerObj.GetComponent<PlaneStats>();
-            if(stats != null && stats.CurrentHP <= 0)
-            {
-                continue;
-            }
 
-            float dist = Vector3.Distance(transform.position, playerObj.transform.position);
-            if(dist < howCloseToPlayer)
+        // Bolt: Still use FindGameObjectsWithTag to support multiplayer if needed,
+        // but this method is now throttled to 2Hz to minimize performance cost.
+        foreach (var playerObj in GameObject.FindGameObjectsWithTag("Player"))
+        {
+            if (playerObj == null) continue;
+
+            var stats = playerObj.GetComponent<PlaneStats>();
+            // Bolt: Ensure we don't target dead players
+            if (stats != null && stats.CurrentHP <= 0) continue;
+
+            // Bolt: Use sqrMagnitude to avoid square root
+            if ((transform.position - playerObj.transform.position).sqrMagnitude < sqrHowCloseToPlayer)
             {
                 players.Add(playerObj.transform);
             }
@@ -131,39 +156,38 @@ public class TurretsManager : MonoBehaviour
     void AssignTurretsToPlayers()
     {
         turretTargets.Clear();
-        var assignedTurrets = new HashSet<TurretControl>();
+        assignedTurrets.Clear();
 
         foreach (var player in players)
         {
-            // Skip destroyed players to avoid MissingReferenceException when accessing position
             if (player == null) continue;
             
-            List<TurretControl> sortedTurrets = new List<TurretControl>(turrets);
+            // Bolt: Reuse list to avoid garbage collection pressure
+            sortedTurrets.Clear();
+            sortedTurrets.AddRange(turrets);
+
+            // Bolt: Use sqrMagnitude for sorting
+            Vector3 playerPos = player.position;
             sortedTurrets.Sort((a, b) =>
             {
-                float da = a == null ? float.MaxValue : Vector3.Distance(a.transform.position, player.position);
-                float db = b == null ? float.MaxValue : Vector3.Distance(b.transform.position, player.position);
+                if (a == b) return 0;
+                if (a == null) return 1;
+                if (b == null) return -1;
+                float da = (a.transform.position - playerPos).sqrMagnitude;
+                float db = (b.transform.position - playerPos).sqrMagnitude;
                 return da.CompareTo(db);
             });
 
-            int assigned = 0;
+            int assignedCount = 0;
             foreach (var turret in sortedTurrets)
             {
                 if (turret == null || assignedTurrets.Contains(turret)) continue;
+
                 turretTargets[turret] = player;
                 assignedTurrets.Add(turret);
-                turret.ControlTurret(player, howCloseToPlayer);
-                assigned++;
-                if (assigned >= maxTurretsPerPlayer) break;
-            }
-        }
 
-        foreach (var turret in turrets)
-        {
-            if (turret == null) continue;
-            if (!turretTargets.ContainsKey(turret))
-            {
-                turret.ControlTurret(null, howCloseToPlayer);
+                assignedCount++;
+                if (assignedCount >= maxTurretsPerPlayer) break;
             }
         }
     }

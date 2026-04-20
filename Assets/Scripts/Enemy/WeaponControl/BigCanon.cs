@@ -30,6 +30,7 @@ public class BigCanon : MonoBehaviour
     private float damage = 100f;
     private float fireRate = 0.1f;
     private float fireRange = 200f;
+    private float sqrFireRange; // Bolt: Cached squared fire range
     private float nextFireTime;
 
     public int maxHP = 200;
@@ -111,7 +112,11 @@ public class BigCanon : MonoBehaviour
             if (playerSearchCooldown <= 0f)
             {
                 playerSearchCooldown = PLAYER_SEARCH_INTERVAL;
+
+                // Bolt: Continue using FindGameObjectWithTag to maintain multiplayer support,
+                // but it's now throttled via playerSearchCooldown.
                 GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+
                 if (playerObject != null)
                 {
                     enemy = playerObject.transform;
@@ -174,13 +179,16 @@ public class BigCanon : MonoBehaviour
             fireRate = 0.1f;
             fireRange = 200f;
         }
+        sqrFireRange = fireRange * fireRange;
     }
 
     private void FindPlayerTarget()
     {
         if (enemy == null)
         {
+            // Bolt: Continue using FindGameObjectWithTag to maintain multiplayer support.
             GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+
             if (playerObject != null)
             {
                 enemy = playerObject.transform;
@@ -261,6 +269,7 @@ public class BigCanon : MonoBehaviour
             RaycastHit hit;
             if (Physics.Raycast(gunBarrel.position, gunBarrel.forward, out hit, maxLaserScale, hittableLayers))
             {
+                // Bolt: distance for scaling still needs square root
                 distance = Vector3.Distance(gunBarrel.position, hit.point);
             }
             currentLaserScale = distance;
@@ -283,7 +292,8 @@ public class BigCanon : MonoBehaviour
             return;
         }
 
-        float distanceToEnemy = Vector3.Distance(transform.position, enemy.position);
+        // Bolt: Use sqrMagnitude to avoid square root
+        float sqrDistanceToEnemy = (transform.position - enemy.position).sqrMagnitude;
         bool canAimAtPlayer = CheckIfCanAimAtPlayer();
         
         if (!canAimAtPlayer && !isPlayerInRotationLimit)
@@ -309,7 +319,7 @@ public class BigCanon : MonoBehaviour
             }
         }
 
-        if (distanceToEnemy <= fireRange && canAimAtPlayer)
+        if (sqrDistanceToEnemy <= sqrFireRange && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;
@@ -336,6 +346,7 @@ public class BigCanon : MonoBehaviour
             {
                 if (laserEndPoint != null && laserVFX != null)
                     laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(hit.point);
+                // Bolt: Length for VFX scaling needs square root
                 float length = Vector3.Distance(gunBarrel.position, hit.point);
                 if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
                     laserVFXPrefab.SetActive(true);
