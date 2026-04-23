@@ -29,6 +29,7 @@ public class MainBossStats : MonoBehaviour, IHasHealth
     private const float FORCE_RESPAWN_DELAY = 10f;
     private float[] sideShipRespawnThresholds = new float[] { 250000f, 100000f };
     private int nextSideShipRespawnIndex = 0;
+    private BigCanon[] cachedBigCanons;
 
     void Start()
     {
@@ -36,6 +37,8 @@ public class MainBossStats : MonoBehaviour, IHasHealth
         lastHPThreshold = Mathf.Floor(maxHP / 100000f) * 100000f;
         UpdateShieldStatus();
         nextSideShipRespawnIndex = 0;
+        // Bolt: Optimized - Cache BigCanon components to avoid expensive GetComponentsInChildren calls in Update/TakeDamage
+        cachedBigCanons = GetComponentsInChildren<BigCanon>(true);
     }
 
     void Update()
@@ -63,11 +66,14 @@ public class MainBossStats : MonoBehaviour, IHasHealth
                         allWeaponsInactive = false;
                 }
             }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
+
+            if (cachedBigCanons != null)
             {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
+                foreach (var bigCanon in cachedBigCanons)
+                {
+                    if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
+                        allWeaponsInactive = false;
+                }
             }
         }
 
@@ -123,12 +129,16 @@ public class MainBossStats : MonoBehaviour, IHasHealth
                         allWeaponsInactive = false;
                 }
             }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
+
+            if (cachedBigCanons != null)
             {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
+                foreach (var bigCanon in cachedBigCanons)
+                {
+                    if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
+                        allWeaponsInactive = false;
+                }
             }
+
             if (!allWeaponsInactive)
                 return;
         }

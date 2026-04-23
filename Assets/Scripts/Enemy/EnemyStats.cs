@@ -24,10 +24,13 @@ public class EnemyStats : MonoBehaviour, IHasHealth
 
     private float forceRespawnTimer = -1f;
     private const float FORCE_RESPAWN_DELAY = 10f;
+    private BigCanon[] cachedBigCanons;
 
     void Start()
     {
         currentHP = maxHP;
+        // Bolt: Optimized - Cache BigCanon components to avoid expensive GetComponentsInChildren calls in Update/TakeDamage
+        cachedBigCanons = GetComponentsInChildren<BigCanon>(true);
     }
 
     public void TakeDamage(float amount)
@@ -53,12 +56,16 @@ public class EnemyStats : MonoBehaviour, IHasHealth
                         allWeaponsInactive = false;
                 }
             }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
+
+            if (cachedBigCanons != null)
             {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
+                foreach (var bigCanon in cachedBigCanons)
+                {
+                    if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
+                        allWeaponsInactive = false;
+                }
             }
+
             if (!allWeaponsInactive)
             {
                 return;
@@ -108,11 +115,14 @@ public class EnemyStats : MonoBehaviour, IHasHealth
                         allWeaponsInactive = false;
                 }
             }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
+
+            if (cachedBigCanons != null)
             {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
+                foreach (var bigCanon in cachedBigCanons)
+                {
+                    if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
+                        allWeaponsInactive = false;
+                }
             }
         }
 
