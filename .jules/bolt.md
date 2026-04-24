@@ -1,0 +1,3 @@
+## 2026-04-24 - Optimizing Turret Targeting Systems
+**Learning:** Unity's targeting systems frequently suffer from three performance killers: 1) redundant square root calculations via `Vector3.Distance`, 2) per-frame allocations from sorting lists or managing target sets, and 3) scene-wide tag searches (`FindGameObjectsWithTag`).
+**Action:** Always prefer `sqrMagnitude` for distance comparisons, pre-allocate and reuse collections (Lists, HashSets) as class members to avoid GC spikes, and utilize singleton patterns (like `GameManager.Instance.currentPlayer`) to bypass expensive tag searches in `Update` loops.

@@ -23,8 +23,13 @@ public class TurretsManager : MonoBehaviour
     public bool trackPlayerInstantly = false;
 
     private float howCloseToPlayer;
+    private float sqrHowCloseToPlayer;
     private List<Transform> players = new List<Transform>();
     private Dictionary<TurretControl, Transform> turretTargets = new Dictionary<TurretControl, Transform>();
+
+    // Bolt: Optimized - Cached collections to avoid per-frame allocations
+    private List<TurretControl> reusableTurretList = new List<TurretControl>();
+    private HashSet<TurretControl> assignedTurrets = new HashSet<TurretControl>();
 
     private float backupRefreshTimer = 0f;
     private const float BACKUP_REFRESH_INTERVAL = 1f;
@@ -52,6 +57,7 @@ public class TurretsManager : MonoBehaviour
         {
             howCloseToPlayer = 100f;
         }
+        sqrHowCloseToPlayer = howCloseToPlayer * howCloseToPlayer;
 
         SetAllTurretsHP();
         maxTurretCount = turrets.Count;
@@ -112,6 +118,24 @@ public class TurretsManager : MonoBehaviour
     void UpdatePlayersList()
     {
         players.Clear();
+
+        // Bolt: Optimized - Use GameManager instance for faster player access if available
+        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+        {
+            var playerObj = GameManager.Instance.currentPlayer;
+            var stats = playerObj.GetComponent<PlaneStats>();
+            if (stats != null && stats.CurrentHP > 0)
+            {
+                // Bolt: Optimized - Use sqrMagnitude to avoid expensive square root
+                float sqrDist = (transform.position - playerObj.transform.position).sqrMagnitude;
+                if (sqrDist < sqrHowCloseToPlayer)
+                {
+                    players.Add(playerObj.transform);
+                }
+            }
+            return;
+        }
+
         foreach(var playerObj in GameObject.FindGameObjectsWithTag("Player"))
         {
             var stats = playerObj.GetComponent<PlaneStats>();
@@ -120,8 +144,8 @@ public class TurretsManager : MonoBehaviour
                 continue;
             }
 
-            float dist = Vector3.Distance(transform.position, playerObj.transform.position);
-            if(dist < howCloseToPlayer)
+            float sqrDist = (transform.position - playerObj.transform.position).sqrMagnitude;
+            if(sqrDist < sqrHowCloseToPlayer)
             {
                 players.Add(playerObj.transform);
             }
@@ -131,28 +155,34 @@ public class TurretsManager : MonoBehaviour
     void AssignTurretsToPlayers()
     {
         turretTargets.Clear();
-        var assignedTurrets = new HashSet<TurretControl>();
+        assignedTurrets.Clear();
 
         foreach (var player in players)
         {
             // Skip destroyed players to avoid MissingReferenceException when accessing position
             if (player == null) continue;
             
-            List<TurretControl> sortedTurrets = new List<TurretControl>(turrets);
-            sortedTurrets.Sort((a, b) =>
+            // Bolt: Optimized - Reuse list and use sqrMagnitude for sorting
+            reusableTurretList.Clear();
+            reusableTurretList.AddRange(turrets);
+            reusableTurretList.Sort((a, b) =>
             {
-                float da = a == null ? float.MaxValue : Vector3.Distance(a.transform.position, player.position);
-                float db = b == null ? float.MaxValue : Vector3.Distance(b.transform.position, player.position);
+                if (a == null && b == null) return 0;
+                if (a == null) return 1;
+                if (b == null) return -1;
+
+                float da = (a.transform.position - player.position).sqrMagnitude;
+                float db = (b.transform.position - player.position).sqrMagnitude;
                 return da.CompareTo(db);
             });
 
             int assigned = 0;
-            foreach (var turret in sortedTurrets)
+            foreach (var turret in reusableTurretList)
             {
-                if (turret == null || assignedTurrets.Contains(turret)) continue;
+                if (turret == null || !turret.gameObject.activeInHierarchy || assignedTurrets.Contains(turret)) continue;
                 turretTargets[turret] = player;
                 assignedTurrets.Add(turret);
-                turret.ControlTurret(player, howCloseToPlayer);
+                turret.ControlTurret(player, sqrHowCloseToPlayer);
                 assigned++;
                 if (assigned >= maxTurretsPerPlayer) break;
             }
@@ -163,7 +193,7 @@ public class TurretsManager : MonoBehaviour
             if (turret == null) continue;
             if (!turretTargets.ContainsKey(turret))
             {
-                turret.ControlTurret(null, howCloseToPlayer);
+                turret.ControlTurret(null, sqrHowCloseToPlayer);
             }
         }
     }
@@ -176,7 +206,7 @@ public class TurretsManager : MonoBehaviour
         {
             if (turret != null && turret.gameObject.activeInHierarchy)
             {
-                turret.ControlTurret(null, howCloseToPlayer);
+                turret.ControlTurret(null, sqrHowCloseToPlayer);
             }
         }
         

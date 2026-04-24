@@ -97,15 +97,17 @@ public class TurretControl : MonoBehaviour
         damage = newDamage;
     }
 
-    public void ControlTurret(Transform enemy, float howCloseToEnemy)
+    // Bolt: Optimized - Accept squared range to avoid multiplication in hot path
+    public void ControlTurret(Transform enemy, float sqrHowCloseToEnemy)
     {
         if (!gameObject.activeInHierarchy) return;
         if(enemy != null)
         {
             directionToEnemy = enemy.position - gunBarrel.position;
-            float distanceToEnemy = Vector3.Distance(gunBarrel.position, enemy.position);
+            // Bolt: Optimized - Use sqrMagnitude to avoid expensive square root
+            float sqrDistanceToEnemy = directionToEnemy.sqrMagnitude;
 
-            if(distanceToEnemy < howCloseToEnemy)
+            if(sqrDistanceToEnemy < sqrHowCloseToEnemy)
             {
                 Quaternion targetRotation = Quaternion.LookRotation(directionToEnemy);
 
