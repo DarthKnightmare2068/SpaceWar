@@ -12,7 +12,6 @@ public class MissileLaunch : MonoBehaviour
     [Tooltip("How long the missile will live before being destroyed")]
     [SerializeField] private float missileLifetime = 10f;
     public PlayerWeaponManager weaponManager;
-    private PlaneStats playerPlane;
     
     [Header("Spawn Points")]
     [SerializeField] private List<Transform> missileSpawnPoints = new List<Transform>();
@@ -39,15 +38,12 @@ public class MissileLaunch : MonoBehaviour
                 weaponManager = GetComponentInParent<PlayerWeaponManager>();
         }
         
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-        {
-            playerPlane = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
-        }
-        
         // Cache references once at Start instead of using FindObjectOfType in Update
         cachedAutoTargetLock = GetComponent<AutoTargetLock>();
         if (cachedAutoTargetLock == null)
             cachedAutoTargetLock = GetComponentInParent<AutoTargetLock>();
+        if (cachedAutoTargetLock == null)
+            GameEntityRegistry.TryGetPlayerComponent(out cachedAutoTargetLock);
         
         cachedTargetLockUI = FindObjectOfType<TargetLockUI>();
         
@@ -100,11 +96,8 @@ public class MissileLaunch : MonoBehaviour
             if (cachedAutoTargetLock == null)
                 cachedAutoTargetLock = GetComponentInParent<AutoTargetLock>();
             
-            // If still null, try to find via GameManager's current player
-            if (cachedAutoTargetLock == null && GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-            {
-                cachedAutoTargetLock = GameManager.Instance.currentPlayer.GetComponent<AutoTargetLock>();
-            }
+            if (cachedAutoTargetLock == null)
+                GameEntityRegistry.TryGetPlayerComponent(out cachedAutoTargetLock);
             
             // Last resort: FindObjectOfType (only when cache is null)
             if (cachedAutoTargetLock == null)

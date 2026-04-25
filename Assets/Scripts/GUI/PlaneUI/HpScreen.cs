@@ -1,55 +1,40 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Rendering.PostProcessing;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
 public class HpScreen : MonoBehaviour
 {
-    private PlaneStats planeStats; // Auto-found at runtime
+    private PlaneStats planeStats;
     private Volume volume;
-    private UnityEngine.Rendering.Universal.Vignette vignette;
-    private float lastHpPercent = 1f;
-    private PlaneStats lastPlaneStats = null;
+    private Vignette vignette;
+    private PlaneStats lastPlaneStats;
 
     void Awake()
     {
         volume = GetComponent<Volume>();
         if (volume != null && volume.profile != null)
-        {
             volume.profile.TryGet(out vignette);
-        }
+    }
+
+    void OnEnable()
+    {
+        GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
+        TryBindPlayer();
+    }
+
+    void OnDisable()
+    {
+        GameEntityRegistry.PlayerChanged -= HandlePlayerChanged;
     }
 
     void Update()
     {
-        // Auto-find player plane if missing or destroyed — prefer GameManager cache
-        if (planeStats == null || !planeStats.gameObject.activeInHierarchy)
-        {
-            GameObject playerObj = null;
-            if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-                playerObj = GameManager.Instance.currentPlayer;
-            else
-                playerObj = GameObject.FindGameObjectWithTag("Player");
-            if (playerObj != null)
-                planeStats = playerObj.GetComponent<PlaneStats>();
-        }
-
-        // If player respawned (new PlaneStats instance), reset vignette intensity
-        if (planeStats != lastPlaneStats && vignette != null)
-        {
-            vignette.intensity.value = 0f;
-            lastHpPercent = 1f;
-            lastPlaneStats = planeStats;
-        }
-
-        if (planeStats == null || vignette == null) return;
+        if (planeStats == null || vignette == null)
+            return;
 
         float hpPercent = (float)planeStats.CurrentHP / Mathf.Max(planeStats.MaxHP, 1);
+        float intensity;
 
-        // Smoothly interpolate intensity: 0 at 100% HP, 1 at 20% HP or less
-        float intensity = 0f;
         if (hpPercent <= 0.2f)
             intensity = 1f;
         else if (hpPercent < 1f)
@@ -58,7 +43,29 @@ public class HpScreen : MonoBehaviour
             intensity = 0f;
 
         vignette.intensity.value = Mathf.Clamp01(intensity);
+    }
 
-        lastHpPercent = hpPercent;
+    private void TryBindPlayer()
+    {
+        if (GameEntityRegistry.TryGetPlayerComponent(out PlaneStats newPlaneStats))
+            SetPlaneStats(newPlaneStats);
+        else
+            SetPlaneStats(null);
+    }
+
+    private void SetPlaneStats(PlaneStats newPlaneStats)
+    {
+        planeStats = newPlaneStats;
+
+        if (planeStats != lastPlaneStats && vignette != null)
+        {
+            vignette.intensity.value = 0f;
+            lastPlaneStats = planeStats;
+        }
+    }
+
+    private void HandlePlayerChanged(GameObject player)
+    {
+        SetPlaneStats(player != null ? player.GetComponent<PlaneStats>() : null);
     }
 }

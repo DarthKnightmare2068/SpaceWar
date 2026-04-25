@@ -50,9 +50,8 @@ public class MissileController : MonoBehaviour
         speed = missileSpeed;
         lifetime = missileLifetime;
         PlaneStats playerPlane = null;
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+        if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
         {
-            GameObject player = GameManager.Instance.currentPlayer;
             playerPlane = player.GetComponent<PlaneStats>();
             // Cache references once during initialization instead of on collision
             cachedAutoTargetLock = player.GetComponent<AutoTargetLock>();

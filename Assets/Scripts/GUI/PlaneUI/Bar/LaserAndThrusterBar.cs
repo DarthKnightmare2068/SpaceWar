@@ -1,4 +1,3 @@
-using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -14,93 +13,58 @@ public class LaserAndThrusterBar : MonoBehaviour
     [Tooltip("Controls how quickly the bars animate. Smaller is slower.")]
     public float lerpSpeed = 0.05f;
 
-    // References to player components
     private LaserActive laserSystem;
     private PlaneControl planeControl;
-    private float searchCooldown = 0f;
-    private const float SEARCH_INTERVAL = 0.5f;
 
-    void Start()
+    void OnEnable()
     {
-        // Delay initialization to avoid startup lag
-        StartCoroutine(DelayedInitialization());
+        GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
+        TryBindPlayerComponents();
     }
 
-    private IEnumerator DelayedInitialization()
+    void OnDisable()
     {
-        // Wait a few frames for scene to initialize
-        yield return new WaitForSeconds(0.1f);
-        FindPlayerComponents();
+        GameEntityRegistry.PlayerChanged -= HandlePlayerChanged;
     }
 
     void Update()
     {
-        // Continuously check for the player and its components in case they respawn.
-        // Use cooldown to avoid checking every frame
-        if (laserSystem == null || planeControl == null || (laserSystem != null && !laserSystem.gameObject.activeInHierarchy))
-        {
-            searchCooldown -= Time.deltaTime;
-            if (searchCooldown <= 0f)
-            {
-                searchCooldown = SEARCH_INTERVAL;
-                FindPlayerComponents();
-            }
-        }
-
-        // --- Update Laser Bar ---
         if (laserSystem != null && laserSlider != null)
         {
-            float targetValue = (laserSystem.maxThreshold > 0) ? ((float)laserSystem.currentThreshold / laserSystem.maxThreshold) : 0;
+            float targetValue = laserSystem.maxThreshold > 0
+                ? (float)laserSystem.currentThreshold / laserSystem.maxThreshold
+                : 0f;
             laserSlider.value = Mathf.Lerp(laserSlider.value, targetValue, lerpSpeed);
         }
         else if (laserSlider != null)
         {
-            laserSlider.value = 0;
+            laserSlider.value = 0f;
         }
 
-        // --- Update Thruster Bar ---
         if (planeControl != null && thrusterSlider != null)
         {
-            float targetValue = (planeControl.maxThrusterThreshold > 0) ? ((float)planeControl.currentThrusterThreshold / planeControl.maxThrusterThreshold) : 0;
+            float targetValue = planeControl.maxThrusterThreshold > 0
+                ? (float)planeControl.currentThrusterThreshold / planeControl.maxThrusterThreshold
+                : 0f;
             thrusterSlider.value = Mathf.Lerp(thrusterSlider.value, targetValue, lerpSpeed);
         }
         else if (thrusterSlider != null)
         {
-            thrusterSlider.value = 0;
+            thrusterSlider.value = 0f;
         }
     }
 
-    void FindPlayerComponents()
+    private void TryBindPlayerComponents()
     {
-        GameObject playerObj = null;
-        
-        // Try cached GameManager reference first (no search)
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-        {
-            playerObj = GameManager.Instance.currentPlayer;
-            laserSystem = playerObj.GetComponent<LaserActive>();
-            planeControl = playerObj.GetComponent<PlaneControl>();
-            if (laserSystem != null && planeControl != null)
-            {
-                return;
-            }
-        }
-        
-        // Fallback to tag search only if needed
-        if (playerObj == null)
-        {
-            playerObj = GameObject.FindGameObjectWithTag("Player");
-        }
-        
-        if (playerObj != null)
-        {
-            laserSystem = playerObj.GetComponent<LaserActive>();
-            planeControl = playerObj.GetComponent<PlaneControl>();
-        }
+        if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
+            HandlePlayerChanged(player);
         else
-        {
-            laserSystem = null;
-            planeControl = null;
-        }
+            HandlePlayerChanged(null);
     }
-} 
+
+    private void HandlePlayerChanged(GameObject player)
+    {
+        laserSystem = player != null ? player.GetComponent<LaserActive>() : null;
+        planeControl = player != null ? player.GetComponent<PlaneControl>() : null;
+    }
+}

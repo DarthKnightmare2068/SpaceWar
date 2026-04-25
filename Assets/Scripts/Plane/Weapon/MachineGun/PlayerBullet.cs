@@ -5,7 +5,6 @@ public class PlayerBullet : MonoBehaviour
     private PooledProjectile pooledProjectile;
     
     // Cached references to avoid GetComponent on every collision
-    private static PlayerWeaponManager cachedWeaponManager;
     private static MachineGunControl cachedGunControl;
     private static PlaneStats cachedPlayerStats;
     private static GameObject cachedPlayer;
@@ -23,13 +22,12 @@ public class PlayerBullet : MonoBehaviour
     
     private static void RefreshPlayerCache()
     {
-        if (GameManager.Instance == null || GameManager.Instance.currentPlayer == null) return;
-        
-        GameObject currentPlayer = GameManager.Instance.currentPlayer;
+        if (!GameEntityRegistry.TryGetPlayerObject(out GameObject currentPlayer))
+            return;
+
         if (cachedPlayer != currentPlayer)
         {
             cachedPlayer = currentPlayer;
-            cachedWeaponManager = currentPlayer.GetComponent<PlayerWeaponManager>();
             cachedGunControl = currentPlayer.GetComponent<MachineGunControl>();
             cachedPlayerStats = currentPlayer.GetComponent<PlaneStats>();
         }

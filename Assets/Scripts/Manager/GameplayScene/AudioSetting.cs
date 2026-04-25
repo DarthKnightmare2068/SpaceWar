@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -197,25 +196,7 @@ public class AudioSetting : MonoBehaviour
     public void PlayRespawnSoundForPlayer(GameObject player)
     {
         if (respawnSound != null)
-        {
             PlayOneShotSound(respawnSound, respawnSoundVolume);
-            StartCoroutine(SwitchToNormalFlightSoundCoroutine(player, respawnSound.length));
-        }
-        else if (normalFlightSound != null)
-        {
-            StartCoroutine(SwitchToNormalFlightSoundCoroutine(player, 0f));
-        }
-    }
-
-    private IEnumerator SwitchToNormalFlightSoundCoroutine(GameObject player, float delay)
-    {
-        if (delay > 0f)
-            yield return new WaitForSeconds(delay);
-            
-        if (player != null && normalFlightSound != null)
-        {
-            StartFlightSound(player);
-        }
     }
 
     public AudioSource StartFlightSound(GameObject player)

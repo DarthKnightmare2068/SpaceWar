@@ -6,6 +6,20 @@ using UnityEngine.UI;
 
 public class GameManager : MonoBehaviour
 {
+    private struct SideShipSpawnRequest
+    {
+        public GameObject Prefab;
+        public Vector3 Position;
+        public EnemyHealthBar HealthBar;
+
+        public SideShipSpawnRequest(GameObject prefab, Vector3 position, EnemyHealthBar healthBar)
+        {
+            Prefab = prefab;
+            Position = position;
+            HealthBar = healthBar;
+        }
+    }
+
     public static GameManager Instance;
 
     public GameObject deadScreen;
@@ -153,31 +167,11 @@ public class GameManager : MonoBehaviour
     {
         if (boss == null) yield break;
 
-        Vector3 bossPos = boss.transform.position;
         Quaternion rotation = Quaternion.identity;
-        float escortYPosition = bossPos.y - 500f;
-
-        if (enemyShip1Prefab != null)
+        foreach (var request in GetSideShipSpawnRequests(boss))
         {
-            Vector3 spawnPos1 = bossPos + Vector3.forward * frontDistance;
-            spawnPos1.y = escortYPosition;
-            RegisterSideShip(Instantiate(enemyShip1Prefab, spawnPos1, rotation), enemyShip1HealthBar);
+            RegisterSideShip(Instantiate(request.Prefab, request.Position, rotation), request.HealthBar);
             yield return null;
-        }
-
-        if (enemyShip2Prefab != null)
-        {
-            Vector3 spawnPos2 = bossPos + Vector3.left * sideDistance;
-            spawnPos2.y = escortYPosition;
-            RegisterSideShip(Instantiate(enemyShip2Prefab, spawnPos2, rotation), enemyShip2HealthBar);
-            yield return null;
-        }
-
-        if (enemyShip3Prefab != null)
-        {
-            Vector3 spawnPos3 = bossPos + Vector3.right * sideDistance;
-            spawnPos3.y = escortYPosition;
-            RegisterSideShip(Instantiate(enemyShip3Prefab, spawnPos3, rotation), enemyShip3HealthBar);
         }
     }
 
@@ -214,36 +208,6 @@ public class GameManager : MonoBehaviour
         }
 
         return boss;
-    }
-
-    public void SpawnEnemyFormation(GameObject boss)
-    {
-        if (boss == null) return;
-
-        Vector3 bossPos = boss.transform.position;
-        Quaternion rotation = Quaternion.identity;
-        float escortYPosition = bossPos.y - 500f;
-
-        if (enemyShip1Prefab != null)
-        {
-            Vector3 spawnPos1 = bossPos + Vector3.forward * frontDistance;
-            spawnPos1.y = escortYPosition;
-            RegisterSideShip(Instantiate(enemyShip1Prefab, spawnPos1, rotation), enemyShip1HealthBar);
-        }
-
-        if (enemyShip2Prefab != null)
-        {
-            Vector3 spawnPos2 = bossPos + Vector3.left * sideDistance;
-            spawnPos2.y = escortYPosition;
-            RegisterSideShip(Instantiate(enemyShip2Prefab, spawnPos2, rotation), enemyShip2HealthBar);
-        }
-
-        if (enemyShip3Prefab != null)
-        {
-            Vector3 spawnPos3 = bossPos + Vector3.right * sideDistance;
-            spawnPos3.y = escortYPosition;
-            RegisterSideShip(Instantiate(enemyShip3Prefab, spawnPos3, rotation), enemyShip3HealthBar);
-        }
     }
 
     private void CacheRadars()
@@ -430,6 +394,7 @@ public class GameManager : MonoBehaviour
             uiCamera.gameObject.SetActive(true);
 
         GameEntityRegistry.UnregisterPlayer();
+        currentPlayer = null;
         ShowDeadScreen();
         if (player != null)
             Destroy(player.gameObject);
@@ -493,5 +458,35 @@ public class GameManager : MonoBehaviour
     {
         float fps = GetCurrentFPS();
         return Mathf.Round(fps).ToString();
+    }
+
+    private IEnumerable<SideShipSpawnRequest> GetSideShipSpawnRequests(GameObject boss)
+    {
+        if (boss == null)
+            yield break;
+
+        Vector3 bossPos = boss.transform.position;
+        float escortYPosition = bossPos.y - 500f;
+
+        if (enemyShip1Prefab != null)
+        {
+            Vector3 spawnPos = bossPos + Vector3.forward * frontDistance;
+            spawnPos.y = escortYPosition;
+            yield return new SideShipSpawnRequest(enemyShip1Prefab, spawnPos, enemyShip1HealthBar);
+        }
+
+        if (enemyShip2Prefab != null)
+        {
+            Vector3 spawnPos = bossPos + Vector3.left * sideDistance;
+            spawnPos.y = escortYPosition;
+            yield return new SideShipSpawnRequest(enemyShip2Prefab, spawnPos, enemyShip2HealthBar);
+        }
+
+        if (enemyShip3Prefab != null)
+        {
+            Vector3 spawnPos = bossPos + Vector3.right * sideDistance;
+            spawnPos.y = escortYPosition;
+            yield return new SideShipSpawnRequest(enemyShip3Prefab, spawnPos, enemyShip3HealthBar);
+        }
     }
 }

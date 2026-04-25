@@ -1,4 +1,3 @@
-using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -26,7 +25,6 @@ public class TargetLockUI : MonoBehaviour
     private float cheatHpDisplayTimer = 0f;
     private const float cheatHpDisplayDuration = 1f;
     private PlaneStats playerStats;
-    private bool lastCanTakeDamage = true;
 
     [Header("Missile Mode UI")]
     public TMP_Text MissileModeText;
@@ -35,12 +33,9 @@ public class TargetLockUI : MonoBehaviour
 
     private bool isLaserInRange = false;
     private float blinkTimer = 0f;
-    private bool referencesChecked = false;
     
     private GameObject cachedPlayer;
     private Camera cachedMainCamera;
-    private float playerSearchCooldown = 0f;
-    private const float PLAYER_SEARCH_INTERVAL = 0.5f;
     private bool isInitialized = false;
     
     private bool cachedEnemyInMissileView = false;
@@ -55,91 +50,48 @@ public class TargetLockUI : MonoBehaviour
     void Start()
     {
         cachedMainCamera = Camera.main;
-        // Delay initialization to avoid startup lag - wait for player to spawn
-        StartCoroutine(DelayedInitialization());
-    }
-
-    private IEnumerator DelayedInitialization()
-    {
-        // Wait a few frames for scene to initialize and player to spawn
-        yield return new WaitForSeconds(0.15f);
-        TryInitializeReferences();
     }
 
     void OnEnable()
     {
+        GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
         isInitialized = false;
         TryInitializeReferences();
     }
 
-    private void TryInitializeReferences()
+    void OnDisable()
     {
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-        {
-            cachedPlayer = GameManager.Instance.currentPlayer;
-            CachePlayerComponents();
-            isInitialized = true;
-        }
-        else
-        {
-            cachedPlayer = GameObject.FindGameObjectWithTag("Player");
-            if (cachedPlayer != null)
-            {
-                CachePlayerComponents();
-                isInitialized = true;
-            }
-        }
-        
-        if (autoTargetLock == null && cachedPlayer != null)
-        {
-            autoTargetLock = cachedPlayer.GetComponent<AutoTargetLock>();
-        }
-        
-        if (autoTargetLock != null)
-        {
-            ConnectToAutoTargetLock();
-        }
+        GameEntityRegistry.PlayerChanged -= HandlePlayerChanged;
+        DisconnectFromAutoTargetLock();
     }
 
-    private void CachePlayerComponents()
+    private void TryInitializeReferences()
     {
-        if (cachedPlayer == null) return;
-        
-        if (machineGunControl == null)
-            machineGunControl = cachedPlayer.GetComponent<MachineGunControl>();
-        if (weaponManager == null)
-            weaponManager = cachedPlayer.GetComponent<PlayerWeaponManager>();
-        if (missileLaunch == null)
-            missileLaunch = cachedPlayer.GetComponent<MissileLaunch>();
-        if (laserActive == null)
-            laserActive = cachedPlayer.GetComponent<LaserActive>();
-        if (playerStats == null)
-            playerStats = cachedPlayer.GetComponent<PlaneStats>();
-        if (autoTargetLock == null)
-            autoTargetLock = cachedPlayer.GetComponent<AutoTargetLock>();
+        if (cachedMainCamera == null)
+            cachedMainCamera = Camera.main;
+
+        if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
+            HandlePlayerChanged(player);
+        else
+            HandlePlayerChanged(null);
+    }
+
+    private void CachePlayerComponents(GameObject player)
+    {
+        cachedPlayer = player;
+
+        machineGunControl = cachedPlayer != null ? cachedPlayer.GetComponent<MachineGunControl>() : null;
+        weaponManager = cachedPlayer != null ? cachedPlayer.GetComponent<PlayerWeaponManager>() : null;
+        missileLaunch = cachedPlayer != null ? cachedPlayer.GetComponent<MissileLaunch>() : null;
+        laserActive = cachedPlayer != null ? cachedPlayer.GetComponent<LaserActive>() : null;
+        playerStats = cachedPlayer != null ? cachedPlayer.GetComponent<PlaneStats>() : null;
+        SetAutoTargetLock(cachedPlayer != null ? cachedPlayer.GetComponent<AutoTargetLock>() : null);
     }
 
     void Update()
     {
         if (!isInitialized || cachedPlayer == null || !cachedPlayer.activeInHierarchy)
-        {
-            playerSearchCooldown -= Time.deltaTime;
-            if (playerSearchCooldown <= 0f)
-            {
-                playerSearchCooldown = PLAYER_SEARCH_INTERVAL;
-                TryInitializeReferences();
-            }
-            
-            if (!isInitialized || cachedPlayer == null)
-            {
-                return;
-            }
-        }
-
-        if (!referencesChecked)
-        {
-            referencesChecked = true;
-        }
+            return;
 
         UpdateWeaponUI();
         UpdateMissileUI();
@@ -194,22 +146,6 @@ public class TargetLockUI : MonoBehaviour
         {
             UpdateUI(false);
         }
-    }
-
-    private string GetTargetType(Collider collider)
-    {
-        if (collider.CompareTag("Enemy")) return "Enemy Ship";
-        
-        var turret = collider.GetComponentInParent<TurretControl>();
-        if (turret != null) return "Turret";
-        
-        var smallCanon = collider.GetComponentInParent<SmallCanonControl>();
-        if (smallCanon != null) return "Small Cannon";
-        
-        var bigCanon = collider.GetComponentInParent<BigCanon>();
-        if (bigCanon != null) return "Big Cannon";
-        
-        return "Unknown Weapon";
     }
 
     private void UpdateMissileUI()
@@ -355,7 +291,6 @@ public class TargetLockUI : MonoBehaviour
         if (playerStats != null && Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.J))
         {
             playerStats.canTakeDamage = !playerStats.canTakeDamage;
-            lastCanTakeDamage = playerStats.canTakeDamage;
             if (CheatHp != null)
             {
                 CheatHp.gameObject.SetActive(true);
@@ -396,17 +331,23 @@ public class TargetLockUI : MonoBehaviour
     {
         if (autoTargetLock == null) return;
         
+        autoTargetLock.OnTargetLocked -= OnTargetLocked;
+        autoTargetLock.OnTargetLost -= OnTargetLost;
         autoTargetLock.OnTargetLocked += OnTargetLocked;
         autoTargetLock.OnTargetLost += OnTargetLost;
     }
 
+    private void DisconnectFromAutoTargetLock()
+    {
+        if (autoTargetLock == null) return;
+
+        autoTargetLock.OnTargetLocked -= OnTargetLocked;
+        autoTargetLock.OnTargetLost -= OnTargetLost;
+    }
+
     void OnDestroy()
     {
-        if (autoTargetLock != null)
-        {
-            autoTargetLock.OnTargetLocked -= OnTargetLocked;
-            autoTargetLock.OnTargetLost -= OnTargetLost;
-        }
+        DisconnectFromAutoTargetLock();
     }
     
     private void OnTargetLocked(Transform target)
@@ -452,11 +393,7 @@ public class TargetLockUI : MonoBehaviour
     
     public void SetAutoTargetLock(AutoTargetLock targetLock)
     {
-        if (autoTargetLock != null)
-        {
-            autoTargetLock.OnTargetLocked -= OnTargetLocked;
-            autoTargetLock.OnTargetLost -= OnTargetLost;
-        }
+        DisconnectFromAutoTargetLock();
         
         autoTargetLock = targetLock;
         
@@ -474,15 +411,6 @@ public class TargetLockUI : MonoBehaviour
         }
     }
 
-    public void OnPlayerSpawned(GameObject player)
-    {
-        cachedPlayer = player;
-        isInitialized = false;
-        referencesChecked = false;
-        CachePlayerComponents();
-        isInitialized = true;
-    }
-
     public void ShowMissileMode()
     {
         if (MissileModeText != null && missileLaunch != null)
@@ -495,5 +423,13 @@ public class TargetLockUI : MonoBehaviour
                 MissileModeText.text = "Missile Mode: Straight";
             missileModeDisplayTimer = missileModeDisplayDuration;
         }
+    }
+
+    private void HandlePlayerChanged(GameObject player)
+    {
+        CachePlayerComponents(player);
+        cachedEnemyTargets = null;
+        enemyTargetCacheTimer = 0f;
+        isInitialized = cachedPlayer != null;
     }
 }

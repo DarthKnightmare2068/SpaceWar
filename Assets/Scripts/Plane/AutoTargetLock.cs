@@ -56,10 +56,7 @@ public class AutoTargetLock : MonoBehaviour
         }
         if (weaponManager == null)
         {
-            if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-            {
-                weaponManager = GameManager.Instance.currentPlayer.GetComponent<PlayerWeaponManager>();
-            }
+            GameEntityRegistry.TryGetPlayerComponent(out weaponManager);
         }
         
         isInitialized = (targetingCamera != null && weaponManager != null);

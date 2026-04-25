@@ -1,4 +1,3 @@
-using System.Collections;
 using UnityEngine;
 using TMPro;
 
@@ -9,49 +8,22 @@ public class PlayerHealthBar : DualSliderBar
 
     private PlaneStats playerStats;
 
-    private float playerSearchTimer = 0f;
-    private const float PLAYER_SEARCH_INTERVAL = 0.5f;
-
     private int lastDisplayedHP = -1;
     private int lastDisplayedMaxHP = -1;
 
-    void Start()
+    void OnEnable()
     {
-        // Delay initialization to avoid startup lag - wait for player to spawn
-        StartCoroutine(DelayedInitialization());
+        GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
+        TryBindPlayer();
     }
 
-    private IEnumerator DelayedInitialization()
+    void OnDisable()
     {
-        // Wait a few frames for scene to initialize
-        yield return new WaitForSeconds(0.1f);
-        
-        // Try to find player using cached GameManager reference first
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-        {
-            playerStats = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
-            if (playerStats != null)
-            {
-                yield break;
-            }
-        }
-        
-        // Fallback to tag search only if GameManager doesn't have player yet
-        FindPlayer();
+        GameEntityRegistry.PlayerChanged -= HandlePlayerChanged;
     }
 
     void Update()
     {
-        if (playerStats == null || !playerStats.gameObject.activeInHierarchy)
-        {
-            playerSearchTimer += Time.deltaTime;
-            if (playerSearchTimer >= PLAYER_SEARCH_INTERVAL)
-            {
-                playerSearchTimer = 0f;
-                FindPlayer();
-            }
-        }
-
         if (playerStats != null)
         {
             float percent = (playerStats.MaxHP > 0) ? (playerStats.CurrentHP / (float)playerStats.MaxHP) : 0;
@@ -65,24 +37,10 @@ public class PlayerHealthBar : DualSliderBar
         }
     }
 
-    void FindPlayer()
+    private void TryBindPlayer()
     {
-        // Always try GameManager first (cached reference, no search)
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-        {
-            playerStats = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
-            if (playerStats != null)
-            {
-                return;
-            }
-        }
-        
-        // Only use expensive tag search as last resort
-        GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-        if (playerObj != null)
-        {
-            playerStats = playerObj.GetComponent<PlaneStats>();
-        }
+        if (!GameEntityRegistry.TryGetPlayerComponent(out playerStats))
+            playerStats = null;
     }
 
     void UpdateHealthText(float current, float max)
@@ -95,12 +53,8 @@ public class PlayerHealthBar : DualSliderBar
         lastDisplayedMaxHP = maxHp;
         healthText.text = $"HP: {hp} / {maxHp}";
     }
-    
-    public void OnPlayerSpawned(GameObject player)
+    private void HandlePlayerChanged(GameObject player)
     {
-        if (player != null)
-        {
-            playerStats = player.GetComponent<PlaneStats>();
-        }
+        playerStats = player != null ? player.GetComponent<PlaneStats>() : null;
     }
 }

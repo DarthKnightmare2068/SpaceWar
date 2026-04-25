@@ -1,4 +1,3 @@
-using System.Collections;
 using UnityEngine;
 using TMPro;
 
@@ -12,57 +11,44 @@ public class SpeedDisplay : MonoBehaviour
     private float timeSinceLastUpdate = 0f;
     private PlaneControl currentPlayer;
 
-    void Start()
+    void OnEnable()
     {
-        // Delay initialization to avoid startup lag
-        StartCoroutine(DelayedInitialization());
+        GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
+        TryBindPlayer();
     }
 
-    private IEnumerator DelayedInitialization()
+    void OnDisable()
     {
-        // Wait a few frames for scene to initialize
-        yield return new WaitForSeconds(0.1f);
-        FindPlayer();
+        GameEntityRegistry.PlayerChanged -= HandlePlayerChanged;
     }
 
     void Update()
     {
-        if(currentPlayer == null)
-        {
-            FindPlayer();
-        }
-
         timeSinceLastUpdate += Time.unscaledDeltaTime;
 
-        if(timeSinceLastUpdate >= updateInterval)
+        if (timeSinceLastUpdate >= updateInterval)
         {
             UpdateSpeedDisplay();
             timeSinceLastUpdate = 0f;
         }
     }
 
-    void FindPlayer()
+    private void TryBindPlayer()
     {
-        if (GameEntityRegistry.PlayerObject != null)
-        {
-            currentPlayer = GameEntityRegistry.PlayerObject.GetComponent<PlaneControl>();
-            if (currentPlayer != null) return;
-        }
-
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
-        if (player != null)
-            currentPlayer = player.GetComponent<PlaneControl>();
+        if (!GameEntityRegistry.TryGetPlayerComponent(out currentPlayer))
+            currentPlayer = null;
     }
 
-    void UpdateSpeedDisplay()
+    private void UpdateSpeedDisplay()
     {
-        if(speedText != null && currentPlayer != null)
-        {
+        if (speedText != null && currentPlayer != null)
             speedText.text = $"Speed: {currentPlayer.currentSpeed:F0}";
-        }
-        else if(speedText != null)
-        {
+        else if (speedText != null)
             speedText.text = "Speed: --";
-        }
+    }
+
+    private void HandlePlayerChanged(GameObject player)
+    {
+        currentPlayer = player != null ? player.GetComponent<PlaneControl>() : null;
     }
 }

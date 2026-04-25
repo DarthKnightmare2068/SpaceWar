@@ -28,8 +28,6 @@ public class WeaponHealthBar : DualSliderBar
 
     private float cameraCheckTimer = 0f;
     private const float CAMERA_CHECK_INTERVAL = 1f;
-    private float playerSearchTimer = 0f;
-    private const float PLAYER_SEARCH_INTERVAL = 2f;
 
     private int lastDisplayedHP = -1;
     private int lastDisplayedMaxHP = -1;
@@ -38,40 +36,40 @@ public class WeaponHealthBar : DualSliderBar
     {
         canvasGroup = GetComponent<CanvasGroup>();
         if (canvasGroup == null)
-        {
             canvasGroup = gameObject.AddComponent<CanvasGroup>();
-        }
+
         canvasGroup.alpha = 1f;
+    }
+
+    void OnEnable()
+    {
+        GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
+        TryBindPlayerAndCamera();
+    }
+
+    void OnDisable()
+    {
+        GameEntityRegistry.PlayerChanged -= HandlePlayerChanged;
     }
 
     void Start()
     {
         cachedMainCamera = Camera.main;
-        FindPlayerAndCamera();
+        TryBindPlayerAndCamera();
+
         turretControl = GetComponentInParent<TurretControl>() ?? GetComponent<TurretControl>();
         cannonControl = GetComponentInParent<SmallCanonControl>() ?? GetComponent<SmallCanonControl>();
         bigCanonControl = GetComponentInParent<BigCanon>() ?? GetComponent<BigCanon>();
-        
+
         if (turretControl != null)
-        {
             maxHP = turretControl.maxHP;
-        }
         else if (cannonControl != null)
-        {
             maxHP = cannonControl.maxHP;
-        }
         else if (bigCanonControl != null)
-        {
             maxHP = bigCanonControl.maxHP;
-        }
-        
-        if ((turretControl != null || cannonControl != null || bigCanonControl != null) && maxHP > 0)
-        {
-            if (canvasGroup != null)
-            {
-                canvasGroup.alpha = 1f;
-            }
-        }
+
+        if ((turretControl != null || cannonControl != null || bigCanonControl != null) && maxHP > 0 && canvasGroup != null)
+            canvasGroup.alpha = 1f;
     }
 
     void Update()
@@ -95,7 +93,7 @@ public class WeaponHealthBar : DualSliderBar
         if (maxHP <= 0) maxHP = 1;
         if (currentHP < 0) currentHP = 0;
 
-        float percent = (maxHP > 0) ? (float)currentHP / maxHP : 0;
+        float percent = maxHP > 0 ? (float)currentHP / maxHP : 0f;
         UpdateBars(percent);
 
         if (healthText != null && (currentHP != lastDisplayedHP || maxHP != lastDisplayedMaxHP))
@@ -105,16 +103,11 @@ public class WeaponHealthBar : DualSliderBar
             healthText.text = $"{currentHP} / {maxHP}";
         }
 
-        if (playerTransform == null || activeCamera == null)
+        if (playerTransform != null && activeCamera == null)
         {
-            playerSearchTimer += Time.deltaTime;
-            if (playerSearchTimer >= PLAYER_SEARCH_INTERVAL)
-            {
-                playerSearchTimer = 0f;
-                FindPlayerAndCamera();
-            }
+            activeCamera = GetActivePlayerCamera(playerTransform);
         }
-        else
+        else if (playerTransform != null)
         {
             cameraCheckTimer += Time.deltaTime;
             if (cameraCheckTimer >= CAMERA_CHECK_INTERVAL)
@@ -132,22 +125,17 @@ public class WeaponHealthBar : DualSliderBar
             if (timeSinceDamage < hideDelay)
             {
                 if (canvasGroup != null)
-                {
                     canvasGroup.alpha = Mathf.MoveTowards(canvasGroup.alpha, 1f, Time.deltaTime / fadeDuration);
-                }
             }
             else
             {
                 if (canvasGroup != null)
-                {
                     canvasGroup.alpha = Mathf.MoveTowards(canvasGroup.alpha, 0f, Time.deltaTime / fadeDuration);
-                }
             }
         }
-        else
+        else if (canvasGroup != null)
         {
-            if (canvasGroup != null)
-                canvasGroup.alpha = 1f;
+            canvasGroup.alpha = 1f;
         }
     }
 
@@ -155,32 +143,35 @@ public class WeaponHealthBar : DualSliderBar
     {
         if (activeCamera != null)
         {
-            transform.LookAt(transform.position + activeCamera.transform.rotation * Vector3.forward,
-                             activeCamera.transform.rotation * Vector3.up);
+            transform.LookAt(
+                transform.position + activeCamera.transform.rotation * Vector3.forward,
+                activeCamera.transform.rotation * Vector3.up);
         }
     }
 
-    void FindPlayerAndCamera()
+    private void TryBindPlayerAndCamera()
     {
-        Transform newTransform = null;
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-            newTransform = GameManager.Instance.currentPlayer.transform;
-        else
-        {
-            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-            if (playerObj != null)
-                newTransform = playerObj.transform;
-        }
+        if (cachedMainCamera == null)
+            cachedMainCamera = Camera.main;
 
-        if (newTransform != playerTransform)
-        {
-            playerTransform = newTransform;
-            cachedPlayerCameras = null;
-        }
+        if (GameEntityRegistry.TryGetPlayerTransform(out Transform newTransform))
+            SetPlayerTransform(newTransform);
+        else
+            SetPlayerTransform(null);
+
         activeCamera = GetActivePlayerCamera(playerTransform);
     }
 
-    Camera GetActivePlayerCamera(Transform player)
+    private void SetPlayerTransform(Transform newTransform)
+    {
+        if (newTransform == playerTransform)
+            return;
+
+        playerTransform = newTransform;
+        cachedPlayerCameras = null;
+    }
+
+    private Camera GetActivePlayerCamera(Transform player)
     {
         if (player == null) return cachedMainCamera;
 
@@ -192,6 +183,7 @@ public class WeaponHealthBar : DualSliderBar
             if (cam != null && cam.enabled)
                 return cam;
         }
+
         return cachedPlayerCameras.Length > 0 ? cachedPlayerCameras[0] : cachedMainCamera;
     }
 
@@ -201,11 +193,16 @@ public class WeaponHealthBar : DualSliderBar
         {
             lastDamageTime = Time.time;
             if (canvasGroup != null)
-            {
                 canvasGroup.alpha = 1f;
-            }
         }
+
         currentHP = current;
         maxHP = max;
+    }
+
+    private void HandlePlayerChanged(GameObject player)
+    {
+        SetPlayerTransform(player != null ? player.transform : null);
+        activeCamera = GetActivePlayerCamera(playerTransform);
     }
 }

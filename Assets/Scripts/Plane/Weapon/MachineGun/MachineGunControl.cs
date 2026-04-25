@@ -37,24 +37,11 @@ public class MachineGunControl : MonoBehaviour
             weaponManager = GetComponentInParent<PlayerWeaponManager>();
         }
         
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-        {
-            playerPlane = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
-        }
+        playerPlane = GetComponent<PlaneStats>();
         if (playerPlane == null)
-        {
-            playerPlane = GetComponent<PlaneStats>();
-            if (playerPlane == null)
-            {
-                playerPlane = GetComponentInParent<PlaneStats>();
-            }
-        }
+            playerPlane = GetComponentInParent<PlaneStats>();
         if (playerPlane == null)
-        {
-            var foundPlayer = GameObject.FindGameObjectWithTag("Player");
-            if (foundPlayer != null)
-                playerPlane = foundPlayer.GetComponent<PlaneStats>();
-        }
+            GameEntityRegistry.TryGetPlayerComponent(out playerPlane);
         
         InitializeBulletPool();
     }

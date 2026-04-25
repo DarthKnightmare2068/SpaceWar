@@ -98,14 +98,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
             if (playerSearchCooldown > 0f) return;
 
             playerSearchCooldown = PLAYER_SEARCH_INTERVAL;
-            Transform playerTransform = GameEntityRegistry.Player;
-            if (playerTransform == null)
-            {
-                GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-                playerTransform = playerObj != null ? playerObj.transform : null;
-            }
-
-            if (playerTransform != null)
+            if (GameEntityRegistry.TryGetPlayerTransform(out Transform playerTransform))
             {
                 enemy = playerTransform;
                 playerSearchFailCount = 0;
@@ -166,14 +159,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
     {
         if (enemy != null) return;
 
-        Transform playerTransform = GameEntityRegistry.Player;
-        if (playerTransform == null)
-        {
-            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-            playerTransform = playerObj != null ? playerObj.transform : null;
-        }
-
-        if (playerTransform != null)
+        if (GameEntityRegistry.TryGetPlayerTransform(out Transform playerTransform))
             enemy = playerTransform;
         else
             enabled = false;

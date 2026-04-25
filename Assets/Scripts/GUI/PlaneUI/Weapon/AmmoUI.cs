@@ -12,8 +12,6 @@ public class AmmoUI : MonoBehaviour
     public bool showText = true;
 
     private PlayerWeaponManager weaponManager;
-    private float searchTimer = 0f;
-    private const float SEARCH_INTERVAL = 1f;
 
     private int lastBullets = -1;
     private int lastMaxBullets = -1;
@@ -21,36 +19,26 @@ public class AmmoUI : MonoBehaviour
     private int lastMissiles = -1;
     private int lastMaxMissiles = -1;
 
-    private void Start()
+    private void OnEnable()
     {
-        // Try GameManager cached reference first — avoids a scene-wide FindObjectOfType.
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-            weaponManager = GameManager.Instance.currentPlayer.GetComponent<PlayerWeaponManager>();
-
-        if (weaponManager == null)
-            weaponManager = FindObjectOfType<PlayerWeaponManager>();
+        GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
+        if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
+            HandlePlayerChanged(player);
+        else
+            HandlePlayerChanged(null);
     }
 
-    // Called by GameManager after player spawns.
-    public void OnPlayerSpawned(GameObject player)
+    private void OnDisable()
     {
-        if (player != null)
-            weaponManager = player.GetComponent<PlayerWeaponManager>();
+        GameEntityRegistry.PlayerChanged -= HandlePlayerChanged;
     }
 
     private void Update()
     {
         if (weaponManager == null)
         {
-            searchTimer += Time.deltaTime;
-            if (searchTimer < SEARCH_INTERVAL) return;
-            searchTimer = 0f;
-
-            if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-                weaponManager = GameManager.Instance.currentPlayer.GetComponent<PlayerWeaponManager>();
-            if (weaponManager == null)
-                weaponManager = FindObjectOfType<PlayerWeaponManager>();
-            if (weaponManager == null) return;
+            ResetAmmoUI();
+            return;
         }
 
         UpdateAmmoUI();
@@ -65,7 +53,7 @@ public class AmmoUI : MonoBehaviour
             bool infinite = weaponManager.isInfinite;
             if (infinite != lastIsInfinite || curBullets != lastBullets || maxBullets != lastMaxBullets)
             {
-                machineGunAmmoText.text = infinite ? ("∞ / " + maxBullets) : (curBullets + " / " + maxBullets);
+                machineGunAmmoText.text = infinite ? ("inf / " + maxBullets) : (curBullets + " / " + maxBullets);
                 lastBullets = curBullets;
                 lastMaxBullets = maxBullets;
                 lastIsInfinite = infinite;
@@ -83,5 +71,26 @@ public class AmmoUI : MonoBehaviour
                 lastMaxMissiles = maxMissiles;
             }
         }
+    }
+
+    private void HandlePlayerChanged(GameObject player)
+    {
+        weaponManager = player != null ? player.GetComponent<PlayerWeaponManager>() : null;
+        ResetAmmoUI();
+    }
+
+    private void ResetAmmoUI()
+    {
+        if (machineGunAmmoText != null && showText)
+            machineGunAmmoText.text = "-- / --";
+
+        if (missileAmmoText != null && showText)
+            missileAmmoText.text = "-- / --";
+
+        lastBullets = -1;
+        lastMaxBullets = -1;
+        lastIsInfinite = false;
+        lastMissiles = -1;
+        lastMaxMissiles = -1;
     }
 }

@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
@@ -29,7 +28,8 @@ public class LevelUpSystem : MonoBehaviour
     private PlayerWeaponManager cachedWeaponManager;
     private LaserActive cachedLaserActive;
     private float nextEnemyScanTime = 0f;
-    private bool hasSubscribedEvents = false;
+    private bool hasWeaponLevelUpListener = false;
+    private bool hasLaserLevelUpListener = false;
 
     private const string SAVE_FILE = "/progress.json";
 
@@ -38,45 +38,52 @@ public class LevelUpSystem : MonoBehaviour
     public float ExpToNextLevel => expToNextLevel;
     public bool IsMaxLevel => currentLevel >= MAX_LEVEL;
 
+    void OnEnable()
+    {
+        GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
+
+        if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
+            HandlePlayerChanged(player);
+    }
+
+    void OnDisable()
+    {
+        GameEntityRegistry.PlayerChanged -= HandlePlayerChanged;
+    }
+
     void Start()
     {
         LoadProgress();
         FindPlayerAndEnemies();
-        SubscribeToLevelUpEvents();
+        BindLevelUpListenersIfReady();
     }
 
     void OnDestroy()
     {
-        if (hasSubscribedEvents)
-            onLevelUp.RemoveAllListeners();
+        if (hasWeaponLevelUpListener)
+            onLevelUp.RemoveListener(HandleWeaponLevelUp);
+        if (hasLaserLevelUpListener)
+            onLevelUp.RemoveListener(HandleLaserLevelUp);
     }
 
-    private void SubscribeToLevelUpEvents()
+    private void BindLevelUpListenersIfReady()
     {
-        if (hasSubscribedEvents) return;
-
-        if (cachedWeaponManager == null)
-            cachedWeaponManager = FindObjectOfType<PlayerWeaponManager>();
-        if (cachedWeaponManager != null)
+        if (!hasWeaponLevelUpListener && cachedWeaponManager != null)
         {
-            onLevelUp.AddListener((level) => {
-                if (cachedWeaponManager != null)
-                    cachedWeaponManager.LevelUp();
-            });
+            onLevelUp.AddListener(HandleWeaponLevelUp);
+            hasWeaponLevelUpListener = true;
         }
 
-        if (cachedLaserActive == null)
-            cachedLaserActive = FindObjectOfType<LaserActive>();
-        if (cachedLaserActive != null)
+        if (!hasLaserLevelUpListener && cachedLaserActive != null)
         {
-            onLevelUp.AddListener((level) => {
-                if (cachedLaserActive != null)
-                    cachedLaserActive.OnPlayerLevelUp();
-            });
+            onLevelUp.AddListener(HandleLaserLevelUp);
+            hasLaserLevelUpListener = true;
         }
-
-        hasSubscribedEvents = true;
     }
+
+    private void HandleWeaponLevelUp(int level) => cachedWeaponManager?.LevelUp();
+
+    private void HandleLaserLevelUp(int level) => cachedLaserActive?.OnPlayerLevelUp();
 
     void Update()
     {
@@ -113,18 +120,27 @@ public class LevelUpSystem : MonoBehaviour
         }
     }
 
+    private void CachePlayerReferences(GameObject player)
+    {
+        if (player == null)
+        {
+            playerPlane = null;
+            cachedWeaponManager = null;
+            cachedLaserActive = null;
+            return;
+        }
+
+        playerPlane = player.GetComponent<PlaneStats>();
+        cachedWeaponManager = player.GetComponent<PlayerWeaponManager>();
+        cachedLaserActive = player.GetComponent<LaserActive>();
+    }
+
     private void FindPlayerAndEnemies()
     {
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-        {
-            playerPlane = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
-        }
+        if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
+            CachePlayerReferences(player);
         else
-        {
-            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-            if (playerObj != null)
-                playerPlane = playerObj.GetComponent<PlaneStats>();
-        }
+            CachePlayerReferences(null);
 
         trackedTargets.Clear();
         trackedSet.Clear();
@@ -272,15 +288,10 @@ public class LevelUpSystem : MonoBehaviour
     public void SetLevel(int level) => currentLevel = Mathf.Clamp(level, 1, MAX_LEVEL);
     public void SetExperience(float exp) => currentExp = Mathf.Clamp(exp, 0, expToNextLevel);
 
-    public void OnPlayerSpawned(GameObject player)
+    private void HandlePlayerChanged(GameObject player)
     {
-        if (player != null)
-        {
-            playerPlane = player.GetComponent<PlaneStats>();
-            cachedWeaponManager = player.GetComponent<PlayerWeaponManager>();
-            cachedLaserActive = player.GetComponent<LaserActive>();
-        }
+        CachePlayerReferences(player);
+        BindLevelUpListenersIfReady();
+        FindPlayerAndEnemies();
     }
-
-    public void RefreshTrackedEnemies() => FindPlayerAndEnemies();
 }

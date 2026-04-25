@@ -141,19 +141,11 @@ public class LaserActive : MonoBehaviour
 
     private void FindPlayerStats()
     {
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
-        {
-            playerPlane = GameManager.Instance.currentPlayer.GetComponent<PlaneStats>();
-        }
-        
+        playerPlane = GetComponent<PlaneStats>();
         if (playerPlane == null)
-        {
-            playerPlane = GetComponent<PlaneStats>();
-            if (playerPlane == null)
-            {
-                playerPlane = GetComponentInParent<PlaneStats>();
-            }
-        }
+            playerPlane = GetComponentInParent<PlaneStats>();
+        if (playerPlane == null)
+            GameEntityRegistry.TryGetPlayerComponent(out playerPlane);
     }
 
     void StartFiring()

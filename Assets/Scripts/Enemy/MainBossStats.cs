@@ -103,12 +103,15 @@ public class MainBossStats : MonoBehaviour, IHasHealth, IHittable
 
     private void UpdateShieldStatus()
     {
-        bool active = !AreAllSideShipsDestroyed();
-        if (bossShield != null && active != lastShieldActive)
-        {
+        SetShieldActive(!AreAllSideShipsDestroyed());
+    }
+
+    private void SetShieldActive(bool active)
+    {
+        if (bossShield != null && bossShield.activeSelf != active)
             bossShield.SetActive(active);
-            lastShieldActive = active;
-        }
+
+        lastShieldActive = active;
     }
 
     private void CheckWeaponRespawnByHP()
@@ -129,7 +132,7 @@ public class MainBossStats : MonoBehaviour, IHasHealth, IHittable
         if (currentHP <= sideShipRespawnThresholds[nextSideShipRespawnIndex] && AreAllSideShipsDestroyed())
         {
             GameManager.Instance?.RespawnEnemySideShips();
-            if (bossShield != null) bossShield.SetActive(true);
+            SetShieldActive(true);
             nextSideShipRespawnIndex++;
         }
     }
