@@ -33,10 +33,24 @@ public class AutoTargetLock : MonoBehaviour
     private List<Transform> enemiesInRange = new List<Transform>();
     private float nextEnemyScanTime = 0f;
     private bool isInitialized = false;
+
+    // Bolt: Optimized - Pre-allocated buffer to eliminate per-scan allocations.
+    // Limit is 64 colliders per scan for performance/memory balance.
+    private Collider[] scanBuffer = new Collider[64];
+    private float sqrMissileFireRange;
     
     void Start()
     {
         InitializeReferences();
+        InitializeOptimization();
+    }
+
+    private void InitializeOptimization()
+    {
+        if (weaponManager != null)
+        {
+            sqrMissileFireRange = weaponManager.missileFireRange * weaponManager.missileFireRange;
+        }
     }
 
     private void InitializeReferences()
@@ -84,6 +98,7 @@ public class AutoTargetLock : MonoBehaviour
             }
             else
             {
+                // We keep Vector3.Distance for the public field used by UI, but use sqrMagnitude for internal logic
                 distanceToTarget = Vector3.Distance(transform.position, lockedTarget.position);
                 isTargetInLockCircle = IsInLockCircle(lockedTarget);
                 
@@ -100,23 +115,50 @@ public class AutoTargetLock : MonoBehaviour
         }
     }
     
+    private HashSet<Transform> enemiesInRangeSet = new HashSet<Transform>();
+
     void FindEnemiesInRange()
     {
         enemiesInRange.Clear();
+        enemiesInRangeSet.Clear();
+
+        if (weaponManager == null || targetTags == null) return;
         
-        if (weaponManager == null) return;
+        // Bolt: Optimized - Replaced O(N) scene-wide tag search with O(M) local spatial partitioning query
+        // Re-calculate squared range in case it changed (e.g. level up)
+        sqrMissileFireRange = weaponManager.missileFireRange * weaponManager.missileFireRange;
         
-        foreach (string tag in targetTags)
+        int count = Physics.OverlapSphereNonAlloc(transform.position, weaponManager.missileFireRange, scanBuffer, enemyLayer);
+
+        for (int i = 0; i < count; i++)
         {
-            GameObject[] candidates = GameObject.FindGameObjectsWithTag(tag);
-            foreach (GameObject obj in candidates)
+            Collider col = scanBuffer[i];
+            if (col == null) continue;
+
+            // Parent traversal to find tagged object (maintaining parity with original tag-based search)
+            Transform curr = col.transform;
+            while (curr != null)
             {
-                if (obj == null || !obj.activeInHierarchy) continue;
-                float distance = Vector3.Distance(transform.position, obj.transform.position);
-                if (distance <= weaponManager.missileFireRange)
+                // Bolt: Optimized - Use CompareTag to avoid string allocation GC pressure
+                bool hasTargetTag = false;
+                foreach (string tag in targetTags)
                 {
-                    enemiesInRange.Add(obj.transform);
+                    if (curr.CompareTag(tag))
+                    {
+                        hasTargetTag = true;
+                        break;
+                    }
                 }
+
+                if (hasTargetTag)
+                {
+                    if (curr.gameObject.activeInHierarchy && enemiesInRangeSet.Add(curr))
+                    {
+                        enemiesInRange.Add(curr);
+                    }
+                    break;
+                }
+                curr = curr.parent;
             }
         }
     }
@@ -124,7 +166,7 @@ public class AutoTargetLock : MonoBehaviour
     void TryLockNewTarget()
     {
         Transform bestTarget = null;
-        float bestDistance = float.MaxValue;
+        float bestSqrDistance = float.MaxValue;
         
         foreach (Transform enemy in enemiesInRange)
         {
@@ -136,13 +178,14 @@ public class AutoTargetLock : MonoBehaviour
             
             if (lockTarget != null)
             {
-                float distance = Vector3.Distance(transform.position, lockTarget.position);
-                if (distance <= weaponManager.missileFireRange && distance < bestDistance)
+                // Bolt: Optimized - Use sqrMagnitude for internal distance comparisons to avoid sqrt
+                float sqrDistance = (transform.position - lockTarget.position).sqrMagnitude;
+                if (sqrDistance <= sqrMissileFireRange && sqrDistance < bestSqrDistance)
                 {
                     if (!requireLineOfSight || HasLineOfSight(lockTarget))
                     {
                         bestTarget = lockTarget;
-                        bestDistance = distance;
+                        bestSqrDistance = sqrDistance;
                     }
                 }
             }
@@ -177,9 +220,13 @@ public class AutoTargetLock : MonoBehaviour
         
         Vector3 directionToTarget = target.position - targetingCamera.transform.position;
         float distance = directionToTarget.magnitude;
+
+        // Safety check for very close distances
+        if (distance < 0.001f) return true;
+
         RaycastHit hit;
         
-        if (Physics.Raycast(targetingCamera.transform.position, directionToTarget.normalized, out hit, distance, obstacleLayer))
+        if (Physics.Raycast(targetingCamera.transform.position, directionToTarget / distance, out hit, distance, obstacleLayer))
         {
             return hit.transform == target || hit.transform.IsChildOf(target);
         }
@@ -206,8 +253,9 @@ public class AutoTargetLock : MonoBehaviour
         if (!target.gameObject.activeInHierarchy) return false;
         if (weaponManager == null) return false;
         
-        float distance = Vector3.Distance(transform.position, target.position);
-        if (distance > weaponManager.missileFireRange) return false;
+        // Bolt: Optimized - Use sqrMagnitude for internal distance checks
+        float sqrDistance = (transform.position - target.position).sqrMagnitude;
+        if (sqrDistance > sqrMissileFireRange) return false;
         
         if (targetingCamera == null) return false;
         Vector3 viewportPos = targetingCamera.WorldToViewportPoint(target.position);
@@ -229,9 +277,12 @@ public class AutoTargetLock : MonoBehaviour
         
         if (viewportPos.z <= 0) return false;
         
-        float distanceFromCenter = Vector2.Distance(new Vector2(viewportPos.x, viewportPos.y), new Vector2(0.5f, 0.5f));
+        // Bolt: Optimized - Use sqrMagnitude for viewport distance check
+        float dx = viewportPos.x - 0.5f;
+        float dy = viewportPos.y - 0.5f;
+        float sqrDistanceFromCenter = dx * dx + dy * dy;
         
-        return distanceFromCenter <= lockCircleRadius;
+        return sqrDistanceFromCenter <= lockCircleRadius * lockCircleRadius;
     }
     
     void LockTarget(Transform target)
@@ -239,6 +290,7 @@ public class AutoTargetLock : MonoBehaviour
         if (lockedTarget == target) return;
         
         lockedTarget = target;
+        // Keep Vector3.Distance for public field (UI compatibility)
         distanceToTarget = Vector3.Distance(transform.position, target.position);
         isTargetInLockCircle = true;
         

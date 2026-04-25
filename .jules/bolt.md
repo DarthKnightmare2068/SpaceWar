@@ -1,0 +1,3 @@
+## 2025-04-25 - Tag comparison and spatial query optimization in Unity
+**Learning:** Transitioning from scene-wide `GameObject.FindGameObjectsWithTag` to local `Physics.OverlapSphereNonAlloc` significantly reduces CPU overhead but requires careful implementation to avoid new bottlenecks. Accessing `gameObject.tag` for comparison in a loop creates significant GC pressure due to string allocations.
+**Action:** Use `CompareTag("Tag")` for allocation-free tag checks. When using non-allocating physics queries, use a `HashSet<Transform>` to filter out duplicate entries from entities with multiple colliders. Always verify variable declarations (`enemyLayer`) when switching from tag-based to physics-based logic.
