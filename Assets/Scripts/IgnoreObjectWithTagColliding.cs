@@ -7,7 +7,8 @@ public class IgnoreObjectWithTagColliding : MonoBehaviour
     void Start()
     {
         Collider thisCollider = GetComponent<Collider>();
-        if (thisCollider == null) return;
+        if (thisCollider == null) 
+            return;
         
         foreach (string tag in ignoreTags)
         {

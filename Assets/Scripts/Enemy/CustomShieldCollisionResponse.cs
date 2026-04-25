@@ -5,21 +5,15 @@ namespace LuminaryLabs.HologramShieldShader
 {
     public class CustomShieldCollisionResponse : MonoBehaviour
     {
-        // Reference to the shield's renderer
         private Renderer shieldRenderer;
-        // Instance of the material (unique per shield)
         private Material shieldMaterial;
 
-        // Duration for which each collision effect lasts (in seconds)
         public float effectDuration = 1f;
-        // Collision effect parameters
         public float collisionRadius = 1f;
         public float collisionIntensity = 2f;
 
-        // Maximum collisions the shader supports (must match shader's MAX_COLLISIONS)
         private const int MAX_COLLISIONS = 10;
 
-        // Data structure for individual collision events
         private class CollisionData
         {
             public Vector3 point;
@@ -28,42 +22,47 @@ namespace LuminaryLabs.HologramShieldShader
             public float startTime;
         }
 
-        // List to track active collisions
         private List<CollisionData> activeCollisions = new List<CollisionData>();
+
+        // Pre-allocated shader arrays — avoids GC allocation every frame
+        private Vector4[] collisionPoints;
+        private float[] collisionRadii;
+        private float[] collisionIntensities;
+        private float[] collisionStartTimes;
+
+        // Dirty flag: skip shader push when nothing is active and shader is already cleared
+        private bool shaderCleared = true;
 
         void Awake()
         {
             shieldRenderer = GetComponent<Renderer>();
-            // Clone the material so that changes affect only this shield instance
             shieldMaterial = shieldRenderer.material;
+
+            collisionPoints = new Vector4[MAX_COLLISIONS];
+            collisionRadii = new float[MAX_COLLISIONS];
+            collisionIntensities = new float[MAX_COLLISIONS];
+            collisionStartTimes = new float[MAX_COLLISIONS];
         }
 
         void Update()
         {
             float currentTime = Time.time;
-
-            // Remove collisions whose effect duration has elapsed
             activeCollisions.RemoveAll(c => (currentTime - c.startTime) > effectDuration);
 
-            // Prepare arrays for shader update
-            Vector4[] collisionPoints = new Vector4[MAX_COLLISIONS];
-            float[] collisionRadii = new float[MAX_COLLISIONS];
-            float[] collisionIntensities = new float[MAX_COLLISIONS];
-            float[] collisionStartTimes = new float[MAX_COLLISIONS];
-
-            // Fill arrays with active collision data, applying a fade factor
             int count = Mathf.Min(activeCollisions.Count, MAX_COLLISIONS);
+
+            // Nothing active and shader already cleared — skip the push entirely
+            if (count == 0 && shaderCleared) return;
+
             for (int i = 0; i < count; i++)
             {
                 CollisionData col = activeCollisions[i];
-                // Calculate fade factor (1 at start, 0 at effectDuration)
                 float fade = Mathf.Clamp01(1f - ((currentTime - col.startTime) / effectDuration));
                 collisionPoints[i] = new Vector4(col.point.x, col.point.y, col.point.z, 0f);
                 collisionRadii[i] = col.radius;
                 collisionIntensities[i] = col.intensity * fade;
                 collisionStartTimes[i] = col.startTime;
             }
-            // Fill any remaining array slots with zeros.
             for (int i = count; i < MAX_COLLISIONS; i++)
             {
                 collisionPoints[i] = Vector4.zero;
@@ -72,36 +71,27 @@ namespace LuminaryLabs.HologramShieldShader
                 collisionStartTimes[i] = 0f;
             }
 
-            // Update shader arrays and parameters
             shieldMaterial.SetVectorArray("_CollisionPoints", collisionPoints);
             shieldMaterial.SetFloatArray("_CollisionRadii", collisionRadii);
             shieldMaterial.SetFloatArray("_CollisionIntensities", collisionIntensities);
             shieldMaterial.SetFloatArray("_CollisionStartTimes", collisionStartTimes);
             shieldMaterial.SetInt("_NumCollisions", count);
             shieldMaterial.SetFloat("_EffectDuration", effectDuration);
+
+            shaderCleared = (count == 0);
         }
 
-        // When a collision occurs, add a new collision event.
         private void OnCollisionEnter(Collision collision)
         {
             if (collision.contactCount > 0)
-            {
-                // Get the first contact point.
-                ContactPoint cp = collision.contacts[0];
-                Vector3 collisionPoint = cp.point;
-                RegisterHit(collisionPoint);
-            }
+                RegisterHit(collision.contacts[0].point);
         }
 
-        // Support for trigger-based bullets/missiles
         private void OnTriggerEnter(Collider other)
         {
-            // Use the closest point on the collider to the shield's position as the hit point
-            Vector3 hitPoint = other.ClosestPoint(transform.position);
-            RegisterHit(hitPoint);
+            RegisterHit(other.ClosestPoint(transform.position));
         }
 
-        // Public method for raycast-based weapons
         public void RegisterHit(Vector3 hitPoint)
         {
             CollisionData newCollision = new CollisionData
@@ -112,14 +102,12 @@ namespace LuminaryLabs.HologramShieldShader
                 startTime = Time.time
             };
 
-            // If there's room, add the new collision.
             if (activeCollisions.Count < MAX_COLLISIONS)
             {
                 activeCollisions.Add(newCollision);
             }
             else
             {
-                // Otherwise, replace the collision with the least remaining time.
                 float minRemaining = float.MaxValue;
                 int replaceIndex = 0;
                 float currentTime = Time.time;
@@ -134,6 +122,8 @@ namespace LuminaryLabs.HologramShieldShader
                 }
                 activeCollisions[replaceIndex] = newCollision;
             }
+
+            shaderCleared = false;
         }
     }
 }

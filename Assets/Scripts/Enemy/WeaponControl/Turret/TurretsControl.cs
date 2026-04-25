@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class TurretControl : MonoBehaviour
+public class TurretControl : MonoBehaviour, IHittable, IHasHealth
 {
     [SerializeField]
     Transform body;
@@ -96,6 +96,13 @@ public class TurretControl : MonoBehaviour
     {
         damage = newDamage;
     }
+
+    // IHittable — single GetComponentInParent<IHittable>() call from DamageHelper.
+    void IHittable.TakeDamage(float amount) => TakeDamage((int)amount);
+
+    // IHasHealth — lets LevelUpSystem track HP via unified interface.
+    float IHasHealth.CurrentHP => currentHP;
+    float IHasHealth.MaxHP => maxHP;
 
     public void ControlTurret(Transform enemy, float howCloseToEnemy)
     {

@@ -105,145 +105,29 @@ public class MachineGunControl : MonoBehaviour
 
     void Fire()
     {
-        if (machineGunSpawnPoints.Count == 0 || bulletPrefab == null || weaponManager == null)
-        {
-            return;
-        }
-
-        if (!weaponManager.CanFireBullet())
-            return;
+        if (machineGunSpawnPoints.Count == 0 || bulletPrefab == null || weaponManager == null) return;
+        if (!weaponManager.CanFireBullet()) return;
 
         Ray ray = weaponManager.GetCurrentTargetRay();
         RaycastHit hit;
-        
         Transform currentSpawnPoint = machineGunSpawnPoints[currentSpawnIndex];
         Vector3 bulletDirection;
-        LayerMask targetableLayers = weaponManager.GetTargetableLayers();
-        
-        if (Physics.Raycast(ray, out hit, weaponManager.machineGunFireRange, targetableLayers))
+
+        if (Physics.Raycast(ray, out hit, weaponManager.machineGunFireRange, weaponManager.GetTargetableLayers()))
         {
-            float hitDistance = hit.distance;
-            
-            if (hit.collider.CompareTag("Enemy"))
-            {
-                HandleEnemyHit(hit, hitDistance);
-            }
-            else if (hit.collider.CompareTag("Turret"))
-            {
-                HandleTurretHit(hit, hitDistance);
-            }
-            else if (hit.collider.CompareTag("SmallCanon"))
-            {
-                HandleSmallCanonHit(hit, hitDistance);
-            }
-            else if (hit.collider.CompareTag("BigCanon"))
-            {
-                HandleBigCanonHit(hit, hitDistance);
-            }
-            
+            float finalDamage = damage + (playerPlane != null ? playerPlane.attackPoint : 0);
+            DamageHelper.TryDealDamage(hit, finalDamage, Color.yellow);
             bulletDirection = (hit.point - currentSpawnPoint.position).normalized;
         }
         else
         {
             bulletDirection = ray.direction;
         }
-        
-        if (weaponManager.CanFireBullet())
-        {
-            SpawnBullet(currentSpawnPoint, bulletDirection);
-            weaponManager.UseBullet();
-        }
+
+        SpawnBullet(currentSpawnPoint, bulletDirection);
+        weaponManager.UseBullet();
         currentSpawnIndex = (currentSpawnIndex + 1) % machineGunSpawnPoints.Count;
-        
         PlayFireSound();
-    }
-
-    private void HandleEnemyHit(RaycastHit hit, float hitDistance)
-    {
-        bool inRange = hitDistance <= weaponManager.machineGunFireRange;
-        
-        if (inRange && weaponManager.CanFireBullet())
-        {
-            var enemyStats = hit.collider.GetComponentInParent<EnemyStats>();
-            var mainBossStats = hit.collider.GetComponentInParent<MainBossStats>();
-            
-            float finalDamage = damage + (playerPlane != null ? playerPlane.attackPoint : 0);
-            
-            if (enemyStats != null)
-            {
-                enemyStats.TakeDamage(finalDamage);
-                DmgPopUp.ShowDamage(hit.point, (int)finalDamage, Color.yellow);
-            }
-            else if (mainBossStats != null)
-            {
-                mainBossStats.TakeDamage(finalDamage);
-                DmgPopUp.ShowDamage(hit.point, (int)finalDamage, Color.yellow);
-            }
-        }
-    }
-
-    private void HandleTurretHit(RaycastHit hit, float hitDistance)
-    {
-        bool inRange = hitDistance <= weaponManager.machineGunFireRange;
-        
-        if (inRange && weaponManager.CanFireBullet())
-        {
-            var turret = hit.collider.GetComponentInParent<TurretControl>();
-            var smallCanon = hit.collider.GetComponentInParent<SmallCanonControl>();
-            var bigCanon = hit.collider.GetComponentInParent<BigCanon>();
-            
-            float finalDamage = damage;
-            if (playerPlane != null)
-                finalDamage += playerPlane.attackPoint;
-            
-            if (turret != null)
-            {
-                turret.TakeDamage((int)finalDamage);
-                DmgPopUp.ShowDamage(hit.point, (int)finalDamage, Color.yellow);
-            }
-            else if (smallCanon != null)
-            {
-                smallCanon.TakeDamage((int)finalDamage);
-                DmgPopUp.ShowDamage(hit.point, (int)finalDamage, Color.yellow);
-            }
-            else if (bigCanon != null)
-            {
-                bigCanon.TakeDamage((int)finalDamage);
-                DmgPopUp.ShowDamage(hit.point, (int)finalDamage, Color.yellow);
-            }
-        }
-    }
-
-    private void HandleSmallCanonHit(RaycastHit hit, float hitDistance)
-    {
-        bool inRange = hitDistance <= weaponManager.machineGunFireRange;
-        
-        if (inRange && weaponManager.CanFireBullet())
-        {
-            var smallCanon = hit.collider.GetComponentInParent<SmallCanonControl>();
-            if (smallCanon != null)
-            {
-                float finalDamage = damage + (playerPlane != null ? playerPlane.attackPoint : 0);
-                smallCanon.TakeDamage((int)finalDamage);
-                DmgPopUp.ShowDamage(hit.point, (int)finalDamage, Color.yellow);
-            }
-        }
-    }
-
-    private void HandleBigCanonHit(RaycastHit hit, float hitDistance)
-    {
-        bool inRange = hitDistance <= weaponManager.machineGunFireRange;
-        
-        if (inRange && weaponManager.CanFireBullet())
-        {
-            var bigCanon = hit.collider.GetComponentInParent<BigCanon>();
-            if (bigCanon != null)
-            {
-                float finalDamage = damage + (playerPlane != null ? playerPlane.attackPoint : 0);
-                bigCanon.TakeDamage((int)finalDamage);
-                DmgPopUp.ShowDamage(hit.point, (int)finalDamage, Color.yellow);
-            }
-        }
     }
 
     private void PlayFireSound()

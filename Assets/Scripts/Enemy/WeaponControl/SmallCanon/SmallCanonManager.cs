@@ -11,7 +11,7 @@ public class SmallCanonManager : MonoBehaviour
     public int canonHP = 10000;
     [Tooltip("VFX prefab to play when a canon is destroyed")]
     public GameObject canonDestroyedVFX;
-    
+
     [Header("Revive Settings")]
     [Tooltip("Time in seconds before canons revive if not all are destroyed")]
     public float reviveTime = 60f;
@@ -24,28 +24,25 @@ public class SmallCanonManager : MonoBehaviour
     public bool trackPlayerInstantly = false;
 
     private float howCloseToPlayer;
-    private List<Transform> players = new List<Transform>();
-    private Dictionary<SmallCanonControl, Transform> canonTargets = new Dictionary<SmallCanonControl, Transform>();
     private float reviveTimer = 0f;
     private bool reviveTimerRunning = false;
+    private bool lastTrackPlayerInstantly;
 
     void Awake()
     {
         canons = new List<SmallCanonControl>(GetComponentsInChildren<SmallCanonControl>(true));
 
-        WeaponDmgControl dmgControl = FindObjectOfType<WeaponDmgControl>();
-        if (dmgControl != null)
-        {
-            howCloseToPlayer = dmgControl.GetSmallCanonFireRange();
-        }
-        else
-        {
-            howCloseToPlayer = 100f;
-        }
+        // Use GetComponentInParent first — avoids a scene-wide search.
+        WeaponDmgControl dmgControl = GetComponentInParent<WeaponDmgControl>();
+        if (dmgControl == null)
+            dmgControl = FindObjectOfType<WeaponDmgControl>();
+
+        howCloseToPlayer = dmgControl != null ? dmgControl.GetSmallCanonFireRange() : 100f;
 
         SetAllCanonsHP();
         maxCanonCount = canons.Count;
         currentCanonCount = maxCanonCount;
+        lastTrackPlayerInstantly = trackPlayerInstantly;
 
         foreach (var canon in canons)
         {
@@ -56,8 +53,10 @@ public class SmallCanonManager : MonoBehaviour
 
     void Update()
     {
-        CleanCanonList();
-        currentCanonCount = canons.Count;
+        // CleanCanonList removed — canons use SetActive(false) on death, never Destroy(),
+        // so the list never contains null references during normal gameplay.
+        // RecountCanons removed — count is maintained by OnCanonDestroyed() and ReviveAllCanons().
+
         if (reviveTimerRunning)
         {
             reviveTimer -= Time.deltaTime;
@@ -68,13 +67,15 @@ public class SmallCanonManager : MonoBehaviour
             }
         }
 
-        foreach (var canon in canons)
+        if (trackPlayerInstantly != lastTrackPlayerInstantly)
         {
-            if (canon != null)
-                canon.SetTrackingMode(trackPlayerInstantly);
+            lastTrackPlayerInstantly = trackPlayerInstantly;
+            foreach (var canon in canons)
+            {
+                if (canon != null)
+                    canon.SetTrackingMode(trackPlayerInstantly);
+            }
         }
-
-        RecountCanons();
     }
 
     public void SetAllCanonsHP()
@@ -110,21 +111,5 @@ public class SmallCanonManager : MonoBehaviour
             }
         }
         currentCanonCount = maxCanonCount;
-    }
-
-    public void RecountCanons()
-    {
-        int count = 0;
-        foreach (var canon in canons)
-        {
-            if (canon != null && canon.gameObject.activeInHierarchy && canon.currentHP > 0)
-                count++;
-        }
-        currentCanonCount = count;
-    }
-
-    public void CleanCanonList()
-    {
-        canons.RemoveAll(c => c == null);
     }
 }

@@ -22,7 +22,13 @@ public class DmgPopUpAnimation : MonoBehaviour
         originAnchoredPosition = rectTransform.anchoredPosition;
     }
 
-    // Update is called once per frame
+    // Called by DmgPopUp when a pooled popup is reused.
+    public void ResetAnimation()
+    {
+        time = 0f;
+        originAnchoredPosition = rectTransform.anchoredPosition;
+    }
+
     void Update()
     {
         float scaleValue = scaleCurve.Evaluate(time);

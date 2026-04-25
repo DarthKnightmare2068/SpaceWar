@@ -7,53 +7,84 @@ public class DmgPopUp : MonoBehaviour
 {
     public static DmgPopUp current;
     public GameObject dmgPopUpPrefab;
-    private Color color;
+
+    private Camera cachedCamera;
+    private Canvas cachedCanvas;
+
+    private const int POOL_SIZE = 20;
+    private const float POPUP_LIFETIME = 1f;
+    private Queue<GameObject> pool = new Queue<GameObject>();
+
     private void Awake()
     {
         current = this;
-    }
-    // Start is called before the first frame update
-    void Start()
-    {
-        
+        cachedCamera = Camera.main;
+        cachedCanvas = GetComponentInParent<Canvas>();
+
+        // Pre-warm pool to avoid Instantiate on first hits.
+        for (int i = 0; i < POOL_SIZE; i++)
+        {
+            var obj = Instantiate(dmgPopUpPrefab, transform.parent);
+            obj.SetActive(false);
+            pool.Enqueue(obj);
+        }
     }
 
-    // Update is called once per frame
-    void Update()
-    {
-        // No keypress test code here
-    }
-
-    // Static method to show a damage popup from anywhere
     public static void ShowDamage(Vector3 worldPosition, int damage, Color color)
     {
         if (current == null) return;
-        // Convert world position to screen position if using Screen Space Canvas
         Vector3 spawnPos = worldPosition;
-        Canvas canvas = current.GetComponentInParent<Canvas>();
+        Canvas canvas = current.cachedCanvas;
         if (canvas != null && (canvas.renderMode == RenderMode.ScreenSpaceOverlay || canvas.renderMode == RenderMode.ScreenSpaceCamera))
         {
-            spawnPos = Camera.main.WorldToScreenPoint(worldPosition);
+            Camera cam = current.cachedCamera != null ? current.cachedCamera : Camera.main;
+            spawnPos = cam.WorldToScreenPoint(worldPosition);
         }
-        current.CreatePupUp(spawnPos, damage.ToString(), color);
+        current.ShowPopUp(spawnPos, damage.ToString(), color);
     }
 
-    // Static method to show a blue damage popup for laser weapon
     public static void ShowLaserDamage(Vector3 worldPosition, int damage)
     {
         ShowDamage(worldPosition, damage, Color.blue);
     }
 
-    public void CreatePupUp(Vector3 position, string text, Color color)
+    private void ShowPopUp(Vector3 position, string text, Color color)
     {
-        var popUp = Instantiate(dmgPopUpPrefab, position, Quaternion.identity, transform.parent); // parent to canvas
-        var temp = popUp.transform.GetChild(0).GetComponent<TextMeshProUGUI>();
-        temp.text = text;
-        temp.color = color;
-        var anim = popUp.GetComponent<DmgPopUpAnimation>();
-        if (anim != null) anim.baseColor = color;
+        GameObject popUp;
+        if (pool.Count > 0)
+        {
+            popUp = pool.Dequeue();
+            popUp.transform.SetParent(transform.parent);
+            popUp.transform.position = position;
+            popUp.transform.rotation = Quaternion.identity;
+            popUp.SetActive(true);
+        }
+        else
+        {
+            popUp = Instantiate(dmgPopUpPrefab, position, Quaternion.identity, transform.parent);
+        }
 
-        //Destroy Timer
-        Destroy(popUp, 1f);
+        var tmp = popUp.transform.GetChild(0).GetComponent<TextMeshProUGUI>();
+        tmp.text = text;
+        tmp.color = color;
+
+        var anim = popUp.GetComponent<DmgPopUpAnimation>();
+        if (anim != null)
+        {
+            anim.baseColor = color;
+            anim.ResetAnimation();
+        }
+
+        StartCoroutine(ReturnToPool(popUp, POPUP_LIFETIME));
+    }
+
+    private IEnumerator ReturnToPool(GameObject obj, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (obj != null)
+        {
+            obj.SetActive(false);
+            pool.Enqueue(obj);
+        }
     }
 }

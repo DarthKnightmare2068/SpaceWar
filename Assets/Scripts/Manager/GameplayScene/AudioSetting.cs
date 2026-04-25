@@ -45,17 +45,46 @@ public class AudioSetting : MonoBehaviour
     private Dictionary<GameObject, AudioSource> playerThrusterAudio = new Dictionary<GameObject, AudioSource>();
     private Dictionary<GameObject, AudioSource> playerLaserAudio = new Dictionary<GameObject, AudioSource>();
 
+    private List<GameObject> cleanupKeys = new List<GameObject>();
+
     void Awake()
     {
         if (Instance == null)
         {
             Instance = this;
+            LoadVolumeSettings();
             InitializeAudioPool();
         }
         else
         {
             Destroy(gameObject);
         }
+    }
+
+    void OnApplicationQuit()
+    {
+        SaveVolumeSettings();
+    }
+
+    private void SaveVolumeSettings()
+    {
+        PlayerPrefs.SetFloat("vol_machinegun", machineGunSFXVolume);
+        PlayerPrefs.SetFloat("vol_missile", missileSFXVolume);
+        PlayerPrefs.SetFloat("vol_laser", laserSFXVolume);
+        PlayerPrefs.SetFloat("vol_flight", normalFlightSoundVolume);
+        PlayerPrefs.SetFloat("vol_thruster", thrusterSoundVolume);
+        PlayerPrefs.SetFloat("vol_respawn", respawnSoundVolume);
+        PlayerPrefs.Save();
+    }
+
+    private void LoadVolumeSettings()
+    {
+        machineGunSFXVolume = PlayerPrefs.GetFloat("vol_machinegun", machineGunSFXVolume);
+        missileSFXVolume = PlayerPrefs.GetFloat("vol_missile", missileSFXVolume);
+        laserSFXVolume = PlayerPrefs.GetFloat("vol_laser", laserSFXVolume);
+        normalFlightSoundVolume = PlayerPrefs.GetFloat("vol_flight", normalFlightSoundVolume);
+        thrusterSoundVolume = PlayerPrefs.GetFloat("vol_thruster", thrusterSoundVolume);
+        respawnSoundVolume = PlayerPrefs.GetFloat("vol_respawn", respawnSoundVolume);
     }
 
     private void InitializeAudioPool()
@@ -97,12 +126,12 @@ public class AudioSetting : MonoBehaviour
 
     private void CleanupDestroyedPlayerAudio(Dictionary<GameObject, AudioSource> audioDict)
     {
-        List<GameObject> toRemove = new List<GameObject>();
+        cleanupKeys.Clear();
         foreach (var kvp in audioDict)
         {
             if (kvp.Key == null)
             {
-                toRemove.Add(kvp.Key);
+                cleanupKeys.Add(kvp.Key);
                 if (kvp.Value != null)
                 {
                     kvp.Value.Stop();
@@ -110,7 +139,7 @@ public class AudioSetting : MonoBehaviour
                 }
             }
         }
-        foreach (var key in toRemove)
+        foreach (var key in cleanupKeys)
         {
             audioDict.Remove(key);
         }

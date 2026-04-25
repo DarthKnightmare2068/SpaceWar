@@ -36,10 +36,11 @@ public class PlayerWeaponManager : MonoBehaviour
     {
         if (mainCamera == null)
             mainCamera = Camera.main;
-        if (targetLockUI == null) {
-            GameObject uiObj = GameObject.Find("Center");
-            if (uiObj != null)
-                targetLockUI = uiObj.GetComponent<RectTransform>();
+        if (targetLockUI == null)
+        {
+            var lockUI = FindObjectOfType<TargetLockUI>();
+            if (lockUI != null)
+                targetLockUI = lockUI.GetComponent<RectTransform>();
         }
         currentBullets = maxBullets;
         currentMissiles = maxMissiles;

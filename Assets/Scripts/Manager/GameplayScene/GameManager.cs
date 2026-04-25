@@ -135,6 +135,20 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    private MainBossStats GetMainBossStats() =>
+        currentBoss != null ? currentBoss.GetComponent<MainBossStats>() : null;
+
+    private void RegisterSideShip(GameObject ship, EnemyHealthBar healthBar)
+    {
+        activeEnemyShips.Add(ship);
+        EnemyStats stats = ship.GetComponent<EnemyStats>();
+        if (stats != null)
+        {
+            healthBar?.SetTarget(stats);
+            GetMainBossStats()?.TrackSideShip(stats);
+        }
+    }
+
     private IEnumerator SpawnEnemyFormationAsync(GameObject boss)
     {
         if (boss == null) yield break;
@@ -143,18 +157,11 @@ public class GameManager : MonoBehaviour
         Quaternion rotation = Quaternion.identity;
         float escortYPosition = bossPos.y - 500f;
 
-        // Spawn enemies one at a time with frame delays
         if (enemyShip1Prefab != null)
         {
             Vector3 spawnPos1 = bossPos + Vector3.forward * frontDistance;
             spawnPos1.y = escortYPosition;
-            GameObject ship1 = Instantiate(enemyShip1Prefab, spawnPos1, rotation);
-            activeEnemyShips.Add(ship1);
-            if (enemyShip1HealthBar != null)
-            {
-                EnemyStats ship1Stats = ship1.GetComponent<EnemyStats>();
-                enemyShip1HealthBar.SetTarget(ship1Stats);
-            }
+            RegisterSideShip(Instantiate(enemyShip1Prefab, spawnPos1, rotation), enemyShip1HealthBar);
             yield return null;
         }
 
@@ -162,13 +169,7 @@ public class GameManager : MonoBehaviour
         {
             Vector3 spawnPos2 = bossPos + Vector3.left * sideDistance;
             spawnPos2.y = escortYPosition;
-            GameObject ship2 = Instantiate(enemyShip2Prefab, spawnPos2, rotation);
-            activeEnemyShips.Add(ship2);
-            if (enemyShip2HealthBar != null)
-            {
-                EnemyStats ship2Stats = ship2.GetComponent<EnemyStats>();
-                enemyShip2HealthBar.SetTarget(ship2Stats);
-            }
+            RegisterSideShip(Instantiate(enemyShip2Prefab, spawnPos2, rotation), enemyShip2HealthBar);
             yield return null;
         }
 
@@ -176,13 +177,7 @@ public class GameManager : MonoBehaviour
         {
             Vector3 spawnPos3 = bossPos + Vector3.right * sideDistance;
             spawnPos3.y = escortYPosition;
-            GameObject ship3 = Instantiate(enemyShip3Prefab, spawnPos3, rotation);
-            activeEnemyShips.Add(ship3);
-            if (enemyShip3HealthBar != null)
-            {
-                EnemyStats ship3Stats = ship3.GetComponent<EnemyStats>();
-                enemyShip3HealthBar.SetTarget(ship3Stats);
-            }
+            RegisterSideShip(Instantiate(enemyShip3Prefab, spawnPos3, rotation), enemyShip3HealthBar);
         }
     }
 
@@ -233,39 +228,21 @@ public class GameManager : MonoBehaviour
         {
             Vector3 spawnPos1 = bossPos + Vector3.forward * frontDistance;
             spawnPos1.y = escortYPosition;
-            GameObject ship1 = Instantiate(enemyShip1Prefab, spawnPos1, rotation);
-            activeEnemyShips.Add(ship1);
-            if (enemyShip1HealthBar != null)
-            {
-                EnemyStats ship1Stats = ship1.GetComponent<EnemyStats>();
-                enemyShip1HealthBar.SetTarget(ship1Stats);
-            }
+            RegisterSideShip(Instantiate(enemyShip1Prefab, spawnPos1, rotation), enemyShip1HealthBar);
         }
 
         if (enemyShip2Prefab != null)
         {
             Vector3 spawnPos2 = bossPos + Vector3.left * sideDistance;
             spawnPos2.y = escortYPosition;
-            GameObject ship2 = Instantiate(enemyShip2Prefab, spawnPos2, rotation);
-            activeEnemyShips.Add(ship2);
-            if (enemyShip2HealthBar != null)
-            {
-                EnemyStats ship2Stats = ship2.GetComponent<EnemyStats>();
-                enemyShip2HealthBar.SetTarget(ship2Stats);
-            }
+            RegisterSideShip(Instantiate(enemyShip2Prefab, spawnPos2, rotation), enemyShip2HealthBar);
         }
 
         if (enemyShip3Prefab != null)
         {
             Vector3 spawnPos3 = bossPos + Vector3.right * sideDistance;
             spawnPos3.y = escortYPosition;
-            GameObject ship3 = Instantiate(enemyShip3Prefab, spawnPos3, rotation);
-            activeEnemyShips.Add(ship3);
-            if (enemyShip3HealthBar != null)
-            {
-                EnemyStats ship3Stats = ship3.GetComponent<EnemyStats>();
-                enemyShip3HealthBar.SetTarget(ship3Stats);
-            }
+            RegisterSideShip(Instantiate(enemyShip3Prefab, spawnPos3, rotation), enemyShip3HealthBar);
         }
     }
 
@@ -391,7 +368,8 @@ public class GameManager : MonoBehaviour
         Quaternion playerRot = Quaternion.Euler(0, 0, 0);
         GameObject player = Instantiate(playerPrefab, spawnPos, playerRot);
         currentPlayer = player;
-        
+        GameEntityRegistry.RegisterPlayer(player);
+
         if (uiCamera != null)
             uiCamera.gameObject.SetActive(false);
 
@@ -451,6 +429,7 @@ public class GameManager : MonoBehaviour
         if (uiCamera != null)
             uiCamera.gameObject.SetActive(true);
 
+        GameEntityRegistry.UnregisterPlayer();
         ShowDeadScreen();
         if (player != null)
             Destroy(player.gameObject);

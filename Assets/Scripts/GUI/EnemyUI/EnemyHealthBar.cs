@@ -1,24 +1,13 @@
 using System.Collections;
 using UnityEngine;
-using UnityEngine.UI;
 using TMPro;
 
 public enum HealthTargetType { Enemy, MainBoss, Custom }
 
-public class EnemyHealthBar : MonoBehaviour
+public class EnemyHealthBar : DualSliderBar
 {
-    [Header("UI Sliders")]
-    [Tooltip("The main health bar (should be on the bottom in the hierarchy).")]
-    public Slider normalHealthBarSlider;
-    [Tooltip("The 'ease' bar that animates (should be on top in the hierarchy).")]
-    public Slider easeHealthBarSlider;
-
     [Header("UI Text (Optional)")]
     public TextMeshProUGUI nameText;
-
-    [Header("Animation Settings")]
-    [Tooltip("Controls how quickly the ease bar animates. Smaller is slower.")]
-    public float lerpSpeed = 0.05f;
 
     [Header("Health Target Selection")]
     public HealthTargetType healthTargetType = HealthTargetType.Enemy;
@@ -27,6 +16,10 @@ public class EnemyHealthBar : MonoBehaviour
     public MonoBehaviour customTarget; // Must implement IHasHealth
 
     private IHasHealth targetEnemy;
+
+    private int lastDisplayedHP = -1;
+    private int lastDisplayedMaxHP = -1;
+    private bool lastWasDefeated = false;
 
     void Start()
     {
@@ -69,17 +62,18 @@ public class EnemyHealthBar : MonoBehaviour
     public void SetTarget(IHasHealth enemy)
     {
         targetEnemy = enemy;
-        // When a new target is set, instantly set both bars to the correct health
+        lastDisplayedHP = -1;
+        lastDisplayedMaxHP = -1;
+        lastWasDefeated = false;
         if (targetEnemy != null)
         {
-            gameObject.SetActive(true); // Activate the health bar GameObject
+            gameObject.SetActive(true);
             float healthPercent = (targetEnemy.MaxHP > 0) ? (targetEnemy.CurrentHP / targetEnemy.MaxHP) : 0;
-            if(normalHealthBarSlider != null) normalHealthBarSlider.value = healthPercent;
-            if(easeHealthBarSlider != null) easeHealthBarSlider.value = healthPercent;
+            ForceSetBars(healthPercent);
         }
         else
         {
-            gameObject.SetActive(false); // If target is null, hide the bar
+            gameObject.SetActive(false);
         }
     }
 
@@ -88,43 +82,45 @@ public class EnemyHealthBar : MonoBehaviour
         if (targetEnemy != null)
         {
             float healthPercent = (targetEnemy.MaxHP > 0) ? (targetEnemy.CurrentHP / targetEnemy.MaxHP) : 0;
-            // If the target is dead, force the bar to zero and show defeated text
             if (targetEnemy.CurrentHP <= 0)
             {
                 if (normalHealthBarSlider != null)
                     normalHealthBarSlider.value = 0f;
                 if (easeHealthBarSlider != null)
                     easeHealthBarSlider.value = 0f;
-                if (nameText != null)
+                if (nameText != null && !lastWasDefeated)
+                {
                     nameText.text = "Enemy Defeated";
+                    lastWasDefeated = true;
+                }
             }
             else
             {
-                normalHealthBarSlider.value = healthPercent;
-                if (easeHealthBarSlider.value != normalHealthBarSlider.value)
-                {
-                    easeHealthBarSlider.value = Mathf.Lerp(easeHealthBarSlider.value, normalHealthBarSlider.value, lerpSpeed);
-                }
+                lastWasDefeated = false;
+                UpdateBars(healthPercent);
                 if (nameText != null)
                 {
-                    nameText.text = $"{targetEnemy.name}: {Mathf.CeilToInt(targetEnemy.CurrentHP)} / {Mathf.CeilToInt(targetEnemy.MaxHP)}";
+                    int hp = Mathf.CeilToInt(targetEnemy.CurrentHP);
+                    int maxHp = Mathf.CeilToInt(targetEnemy.MaxHP);
+                    if (hp != lastDisplayedHP || maxHp != lastDisplayedMaxHP)
+                    {
+                        lastDisplayedHP = hp;
+                        lastDisplayedMaxHP = maxHp;
+                        nameText.text = $"{targetEnemy.name}: {hp} / {maxHp}";
+                    }
                 }
             }
         }
         else
         {
-            // Force health bar to stay on and show defeated status
-            if (normalHealthBarSlider != null)
-                normalHealthBarSlider.value = 0f;
-            if (easeHealthBarSlider != null)
-                easeHealthBarSlider.value = 0f;
-            if (nameText != null)
+            ForceSetBars(0f);
+            if (nameText != null && !lastWasDefeated)
             {
                 nameText.text = "Enemy Defeated";
+                lastWasDefeated = true;
             }
         }
-        
-        // Always force the health bar to stay active
+
         if (!gameObject.activeSelf)
         {
             gameObject.SetActive(true);

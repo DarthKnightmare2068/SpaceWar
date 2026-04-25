@@ -248,44 +248,12 @@ public class LaserActive : MonoBehaviour
         {
             calculatedRange = hit.distance;
 
-            if (hit.collider.CompareTag("Turret"))
+            if (playerPlane != null)
             {
-                var turret = hit.collider.GetComponentInParent<TurretControl>();
-                var smallCanon = hit.collider.GetComponentInParent<SmallCanonControl>();
-                var bigCanon = hit.collider.GetComponentInParent<BigCanon>();
-                
-                if (turret != null && playerPlane != null)
-                {
-                    turret.TakeDamage((int)(laserDamage + playerPlane.attackPoint));
-                    DmgPopUp.ShowLaserDamage(hit.point, (int)(laserDamage + playerPlane.attackPoint));
-                }
-                else if (smallCanon != null && playerPlane != null)
-                {
-                    smallCanon.TakeDamage((int)(laserDamage + playerPlane.attackPoint));
-                    DmgPopUp.ShowLaserDamage(hit.point, (int)(laserDamage + playerPlane.attackPoint));
-                }
-                else if (bigCanon != null && playerPlane != null)
-                {
-                    bigCanon.TakeDamage((int)(laserDamage + playerPlane.attackPoint));
-                    DmgPopUp.ShowLaserDamage(hit.point, (int)(laserDamage + playerPlane.attackPoint));
-                }
+                float finalDamage = laserDamage + playerPlane.attackPoint;
+                DamageHelper.TryDealDamage(hit, finalDamage, Color.blue);
             }
-            else if (hit.collider.CompareTag("Enemy"))
-            {
-                var enemy = hit.collider.GetComponentInParent<EnemyStats>();
-                var mainBoss = hit.collider.GetComponentInParent<MainBossStats>();
-                
-                if (enemy != null && playerPlane != null)
-                {
-                    enemy.TakeDamage(laserDamage + playerPlane.attackPoint);
-                    DmgPopUp.ShowLaserDamage(hit.point, (int)(laserDamage + playerPlane.attackPoint));
-                }
-                else if (mainBoss != null && playerPlane != null)
-                {
-                    mainBoss.TakeDamage(laserDamage + playerPlane.attackPoint);
-                    DmgPopUp.ShowLaserDamage(hit.point, (int)(laserDamage + playerPlane.attackPoint));
-                }
-            }
+
             if (explosionVFXPrefab != null)
             {
                 GameObject explosion = Instantiate(explosionVFXPrefab, hit.point, Quaternion.LookRotation(hit.normal));

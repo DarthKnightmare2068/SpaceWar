@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 
-public class MainBossStats : MonoBehaviour, IHasHealth
+public class MainBossStats : MonoBehaviour, IHasHealth, IHittable
 {
     [Header("Health Settings")]
     [Tooltip("Maximum hit points of the boss.")]
@@ -24,61 +24,40 @@ public class MainBossStats : MonoBehaviour, IHasHealth
     [Header("Boss Shield GameObject (disable to allow damage)")]
     public GameObject bossShield;
 
-    private float lastHPThreshold = 0f;
+    private float lastHPThreshold;
     private float forceRespawnTimer = -1f;
     private const float FORCE_RESPAWN_DELAY = 10f;
-    private float[] sideShipRespawnThresholds = new float[] { 250000f, 100000f };
-    private int nextSideShipRespawnIndex = 0;
+    private const float HP_THRESHOLD_STEP = 100000f;
+    private readonly float[] sideShipRespawnThresholds = { 250000f, HP_THRESHOLD_STEP };
+    private int nextSideShipRespawnIndex;
+    private bool lastShieldActive = true;
 
     void Start()
     {
         currentHP = maxHP;
-        lastHPThreshold = Mathf.Floor(maxHP / 100000f) * 100000f;
+        lastHPThreshold = Mathf.Floor(maxHP / HP_THRESHOLD_STEP) * HP_THRESHOLD_STEP;
         UpdateShieldStatus();
         nextSideShipRespawnIndex = 0;
     }
 
+    public void TrackSideShip(EnemyStats sideShip)
+    {
+        if (sideShip != null) sideShip.onDeath.AddListener(OnSideShipDied);
+    }
+
+    private void OnSideShipDied() => UpdateShieldStatus();
+
     void Update()
     {
-        UpdateShieldStatus();
         CheckWeaponRespawnByHP();
         CheckSideShipRespawnByHP();
 
-        bool allWeaponsInactive = true;
-        if (weaponDmgControl != null)
-        {
-            if (weaponDmgControl.smallCanonManager != null)
-            {
-                foreach (var canon in weaponDmgControl.smallCanonManager.canons)
-                {
-                    if (canon != null && canon.gameObject.activeInHierarchy)
-                        allWeaponsInactive = false;
-                }
-            }
-            if (weaponDmgControl.turretsManager != null)
-            {
-                foreach (var turret in weaponDmgControl.turretsManager.turrets)
-                {
-                    if (turret != null && turret.gameObject.activeInHierarchy)
-                        allWeaponsInactive = false;
-                }
-            }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
-            {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
-            }
-        }
+        bool allInactive = weaponDmgControl == null || weaponDmgControl.AllWeaponsInactive;
 
-        if (allWeaponsInactive && forceRespawnTimer < 0f)
-        {
+        if (allInactive && forceRespawnTimer < 0f)
             forceRespawnTimer = FORCE_RESPAWN_DELAY;
-        }
-        else if (!allWeaponsInactive)
-        {
+        else if (!allInactive)
             forceRespawnTimer = -1f;
-        }
 
         if (forceRespawnTimer > 0f)
         {
@@ -86,133 +65,71 @@ public class MainBossStats : MonoBehaviour, IHasHealth
             if (forceRespawnTimer <= 0f)
             {
                 forceRespawnTimer = -1f;
-                if (weaponDmgControl != null)
-                {
-                    weaponDmgControl.ReviveAllTurrets();
-                    weaponDmgControl.ReviveAllCanons();
-                    weaponDmgControl.ReviveAllBigCanons();
-                }
+                weaponDmgControl?.ReviveAllTurrets();
+                weaponDmgControl?.ReviveAllCanons();
+                weaponDmgControl?.ReviveAllBigCanons();
             }
         }
     }
 
     public void TakeDamage(float amount)
     {
-        if (amount <= 0 || currentHP <= 0)
-            return;
-        
-        if (!AreAllSideShipsDestroyed())
-            return;
+        if (amount <= 0 || currentHP <= 0) return;
+        if (!AreAllSideShipsDestroyed()) return;
+        if (weaponDmgControl != null && !weaponDmgControl.AllWeaponsInactive) return;
 
-        if (weaponDmgControl != null)
-        {
-            bool allWeaponsInactive = true;
-            if (weaponDmgControl.smallCanonManager != null)
-            {
-                foreach (var canon in weaponDmgControl.smallCanonManager.canons)
-                {
-                    if (canon != null && canon.gameObject.activeInHierarchy)
-                        allWeaponsInactive = false;
-                }
-            }
-            if (weaponDmgControl.turretsManager != null)
-            {
-                foreach (var turret in weaponDmgControl.turretsManager.turrets)
-                {
-                    if (turret != null && turret.gameObject.activeInHierarchy)
-                        allWeaponsInactive = false;
-                }
-            }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
-            {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
-            }
-            if (!allWeaponsInactive)
-                return;
-        }
-        
         currentHP -= amount;
-        
-        if (currentHP <= 0)
-        {
-            currentHP = 0;
-            HandleDeath();
-        }
+        if (currentHP <= 0) { currentHP = 0; HandleDeath(); }
         forceRespawnTimer = -1f;
     }
 
     private void HandleDeath()
     {
-        if (deathVFX != null)
-        {
-            GameObject vfx = Instantiate(deathVFX, transform.position, transform.rotation);
-            Destroy(vfx, 5f);
-        }
+        if (deathVFX != null) { var vfx = Instantiate(deathVFX, transform.position, transform.rotation); Destroy(vfx, 5f); }
         onDeath?.Invoke();
         Destroy(gameObject);
     }
 
     private bool AreAllSideShipsDestroyed()
     {
-        if (GameManager.Instance == null)
-            return true;
-        var enemyShips = GameManager.Instance.GetActiveEnemyShips();
-        foreach (var shipGO in enemyShips)
+        if (GameManager.Instance == null) return true;
+        foreach (var ship in GameManager.Instance.GetActiveEnemyShips())
         {
-            if (shipGO != null)
-            {
-                var stats = shipGO.GetComponent<EnemyStats>();
-                if (stats != null && stats.CurrentHP > 0)
-                    return false;
-            }
+            if (ship != null && ship.GetComponent<EnemyStats>() is EnemyStats s && s.CurrentHP > 0)
+                return false;
         }
         return true;
     }
 
     private void UpdateShieldStatus()
     {
-        bool allDestroyed = AreAllSideShipsDestroyed();
-        if (bossShield != null)
-            bossShield.SetActive(!allDestroyed);
+        bool active = !AreAllSideShipsDestroyed();
+        if (bossShield != null && active != lastShieldActive)
+        {
+            bossShield.SetActive(active);
+            lastShieldActive = active;
+        }
     }
 
     private void CheckWeaponRespawnByHP()
     {
-        float hpThreshold = Mathf.Floor(currentHP / 100000f) * 100000f;
-        hpThreshold = Mathf.Max(hpThreshold, 0f);
-        
-        if (hpThreshold < lastHPThreshold)
+        float threshold = Mathf.Max(Mathf.Floor(currentHP / HP_THRESHOLD_STEP) * HP_THRESHOLD_STEP, 0f);
+        if (threshold < lastHPThreshold)
         {
-            ForceRespawnAllWeapons();
-            lastHPThreshold = hpThreshold;
-        }
-    }
-
-    private void ForceRespawnAllWeapons()
-    {
-        if (weaponDmgControl != null)
-        {
-            weaponDmgControl.ReviveAllTurrets();
-            weaponDmgControl.ReviveAllCanons();
-            weaponDmgControl.ReviveAllBigCanons();
+            weaponDmgControl?.ReviveAllTurrets();
+            weaponDmgControl?.ReviveAllCanons();
+            weaponDmgControl?.ReviveAllBigCanons();
+            lastHPThreshold = threshold;
         }
     }
 
     private void CheckSideShipRespawnByHP()
     {
-        if (nextSideShipRespawnIndex >= sideShipRespawnThresholds.Length)
-            return;
-        float threshold = sideShipRespawnThresholds[nextSideShipRespawnIndex];
-        if (currentHP <= threshold && AreAllSideShipsDestroyed())
+        if (nextSideShipRespawnIndex >= sideShipRespawnThresholds.Length) return;
+        if (currentHP <= sideShipRespawnThresholds[nextSideShipRespawnIndex] && AreAllSideShipsDestroyed())
         {
-            if (GameManager.Instance != null)
-            {
-                GameManager.Instance.RespawnEnemySideShips();
-            }
-            if (bossShield != null)
-                bossShield.SetActive(true);
+            GameManager.Instance?.RespawnEnemySideShips();
+            if (bossShield != null) bossShield.SetActive(true);
             nextSideShipRespawnIndex++;
         }
     }

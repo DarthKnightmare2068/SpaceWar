@@ -4,6 +4,9 @@ using System.Collections;
 [DisallowMultipleComponent]
 public class PlaneStats : MonoBehaviour
 {
+    [Header("Data Asset (optional — overrides inline values below)")]
+    [SerializeField] private PlaneStatsSO planeData;
+
     [Header("Health Settings")]
     [Tooltip("Maximum hit points of the plane.")]
     public int maxHP = 100;
@@ -27,6 +30,13 @@ public class PlaneStats : MonoBehaviour
 
     void Awake()
     {
+        if (planeData != null)
+        {
+            maxHP = planeData.maxHP;
+            attackPoint = planeData.attackPoint;
+            regenerationDelay = planeData.regenerationDelay;
+            regenerationRate = planeData.regenerationRate;
+        }
         currentHP = maxHP;
         lastDamageTime = Time.time;
     }

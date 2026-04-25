@@ -100,25 +100,7 @@ public class MissileController : MonoBehaviour
 
         if (other.CompareTag("Turret"))
         {
-            var turret = other.GetComponentInParent<TurretControl>();
-            var smallCanon = other.GetComponentInParent<SmallCanonControl>();
-            var bigCanon = other.GetComponentInParent<BigCanon>();
-            
-            if (turret != null)
-            {
-                turret.TakeDamage((int)damage);
-                DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
-            }
-            else if (smallCanon != null)
-            {
-                smallCanon.TakeDamage((int)damage);
-                DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
-            }
-            else if (bigCanon != null)
-            {
-                bigCanon.TakeDamage((int)damage);
-                DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
-            }
+            DamageHelper.TryDealDamage(other, damage, Color.red, hitPosition);
         }
         else if (other.CompareTag("Enemy"))
         {

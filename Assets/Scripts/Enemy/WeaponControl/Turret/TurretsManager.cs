@@ -24,13 +24,24 @@ public class TurretsManager : MonoBehaviour
 
     private float howCloseToPlayer;
     private List<Transform> players = new List<Transform>();
-    private Dictionary<TurretControl, Transform> turretTargets = new Dictionary<TurretControl, Transform>();
 
-    private float backupRefreshTimer = 0f;
-    private const float BACKUP_REFRESH_INTERVAL = 1f;
+    private Dictionary<TurretControl, Transform> cachedAssignment = new Dictionary<TurretControl, Transform>();
+    private List<TurretControl> sortedTurretCache = new List<TurretControl>();
+    private HashSet<TurretControl> reusableAssignedSet = new HashSet<TurretControl>();
+
+    private bool sortedCacheDirty = true;
+    private bool listDirty = false;
+    private bool lastTrackPlayerInstantly;
 
     private float playerListUpdateTimer = 0f;
     private const float PLAYER_LIST_UPDATE_INTERVAL = 0.5f;
+
+    // Assignment (sort + assign) runs every ASSIGN_INTERVAL, not every frame.
+    private float assignTimer = 0f;
+    private const float ASSIGN_INTERVAL = 0.5f;
+
+    private float backupRefreshTimer = 0f;
+    private const float BACKUP_REFRESH_INTERVAL = 1f;
 
     private WeaponDmgControl cachedDmgControl;
 
@@ -40,22 +51,17 @@ public class TurretsManager : MonoBehaviour
 
         cachedDmgControl = GetComponentInParent<WeaponDmgControl>();
         if (cachedDmgControl == null)
-        {
             cachedDmgControl = FindObjectOfType<WeaponDmgControl>();
-        }
-        
+
         if (cachedDmgControl != null)
-        {
             howCloseToPlayer = cachedDmgControl.GetTurretFireRange();
-        }
         else
-        {
             howCloseToPlayer = 100f;
-        }
 
         SetAllTurretsHP();
         maxTurretCount = turrets.Count;
         currentTurretCount = maxTurretCount;
+        lastTrackPlayerInstantly = trackPlayerInstantly;
 
         foreach (var turret in turrets)
         {
@@ -66,35 +72,106 @@ public class TurretsManager : MonoBehaviour
 
     void Update()
     {
-        CleanTurretList();
-        currentTurretCount = turrets.Count;
-        
+        // Only clean list when a turret was destroyed (dirty flag set by MarkTurretListDirty).
+        if (listDirty)
+        {
+            turrets.RemoveAll(t => t == null);
+            listDirty = false;
+            sortedCacheDirty = true;
+            currentTurretCount = turrets.Count;
+        }
+
         playerListUpdateTimer += Time.deltaTime;
         if (playerListUpdateTimer >= PLAYER_LIST_UPDATE_INTERVAL)
         {
             playerListUpdateTimer = 0f;
             UpdatePlayersList();
+            // Player moved — assignment may need refresh.
+            sortedCacheDirty = true;
         }
-        
-        AssignTurretsToPlayers();
+
+        // Rebuild sort + assignment at interval, not every frame.
+        assignTimer += Time.deltaTime;
+        if (assignTimer >= ASSIGN_INTERVAL || sortedCacheDirty)
+        {
+            assignTimer = 0f;
+            RefreshAssignment();
+        }
+
+        // Every frame: call ControlTurret with cached assignment for smooth rotation/shooting.
+        for (int i = 0; i < turrets.Count; i++)
+        {
+            var turret = turrets[i];
+            if (turret == null) continue;
+            cachedAssignment.TryGetValue(turret, out Transform target);
+            turret.ControlTurret(target, howCloseToPlayer);
+        }
 
         backupRefreshTimer += Time.deltaTime;
         if (backupRefreshTimer >= BACKUP_REFRESH_INTERVAL)
         {
             backupRefreshTimer = 0f;
-            ForceRefreshAllTurretTargeting();
+            sortedCacheDirty = true;
         }
 
-        foreach (var turret in turrets)
+        if (trackPlayerInstantly != lastTrackPlayerInstantly)
         {
-            if (turret != null)
-                turret.SetTrackingMode(trackPlayerInstantly);
+            lastTrackPlayerInstantly = trackPlayerInstantly;
+            foreach (var turret in turrets)
+            {
+                if (turret != null)
+                    turret.SetTrackingMode(trackPlayerInstantly);
+            }
+        }
+    }
+
+    // Call this when a turret is destroyed so the list is cleaned next frame.
+    public void MarkTurretListDirty()
+    {
+        listDirty = true;
+    }
+
+    private void RefreshAssignment()
+    {
+        cachedAssignment.Clear();
+        reusableAssignedSet.Clear();
+
+        if (sortedCacheDirty)
+        {
+            sortedTurretCache.Clear();
+            sortedTurretCache.AddRange(turrets);
+            sortedCacheDirty = false;
+        }
+
+        foreach (var player in players)
+        {
+            if (player == null) continue;
+
+            sortedTurretCache.Sort((a, b) =>
+            {
+                float da = a == null ? float.MaxValue : Vector3.Distance(a.transform.position, player.position);
+                float db = b == null ? float.MaxValue : Vector3.Distance(b.transform.position, player.position);
+                return da.CompareTo(db);
+            });
+
+            int assigned = 0;
+            for (int i = 0; i < sortedTurretCache.Count; i++)
+            {
+                var turret = sortedTurretCache[i];
+                if (turret == null || reusableAssignedSet.Contains(turret)) continue;
+                cachedAssignment[turret] = player;
+                reusableAssignedSet.Add(turret);
+                assigned++;
+                if (assigned >= maxTurretsPerPlayer) break;
+            }
         }
     }
 
     public void CleanTurretList()
     {
         turrets.RemoveAll(t => t == null);
+        sortedCacheDirty = true;
+        currentTurretCount = turrets.Count;
     }
 
     public void SetAllTurretsHP()
@@ -112,75 +189,14 @@ public class TurretsManager : MonoBehaviour
     void UpdatePlayersList()
     {
         players.Clear();
-        foreach(var playerObj in GameObject.FindGameObjectsWithTag("Player"))
-        {
-            var stats = playerObj.GetComponent<PlaneStats>();
-            if(stats != null && stats.CurrentHP <= 0)
-            {
-                continue;
-            }
+        Transform playerTransform = GameEntityRegistry.Player;
+        if (playerTransform == null) return;
 
-            float dist = Vector3.Distance(transform.position, playerObj.transform.position);
-            if(dist < howCloseToPlayer)
-            {
-                players.Add(playerObj.transform);
-            }
-        }
-    }
+        var stats = playerTransform.GetComponent<PlaneStats>();
+        if (stats != null && stats.CurrentHP <= 0) return;
 
-    void AssignTurretsToPlayers()
-    {
-        turretTargets.Clear();
-        var assignedTurrets = new HashSet<TurretControl>();
-
-        foreach (var player in players)
-        {
-            // Skip destroyed players to avoid MissingReferenceException when accessing position
-            if (player == null) continue;
-            
-            List<TurretControl> sortedTurrets = new List<TurretControl>(turrets);
-            sortedTurrets.Sort((a, b) =>
-            {
-                float da = a == null ? float.MaxValue : Vector3.Distance(a.transform.position, player.position);
-                float db = b == null ? float.MaxValue : Vector3.Distance(b.transform.position, player.position);
-                return da.CompareTo(db);
-            });
-
-            int assigned = 0;
-            foreach (var turret in sortedTurrets)
-            {
-                if (turret == null || assignedTurrets.Contains(turret)) continue;
-                turretTargets[turret] = player;
-                assignedTurrets.Add(turret);
-                turret.ControlTurret(player, howCloseToPlayer);
-                assigned++;
-                if (assigned >= maxTurretsPerPlayer) break;
-            }
-        }
-
-        foreach (var turret in turrets)
-        {
-            if (turret == null) continue;
-            if (!turretTargets.ContainsKey(turret))
-            {
-                turret.ControlTurret(null, howCloseToPlayer);
-            }
-        }
-    }
-
-    private void ForceRefreshAllTurretTargeting()
-    {
-        turretTargets.Clear();
-        
-        foreach (var turret in turrets)
-        {
-            if (turret != null && turret.gameObject.activeInHierarchy)
-            {
-                turret.ControlTurret(null, howCloseToPlayer);
-            }
-        }
-        
-        UpdatePlayersList();
-        AssignTurretsToPlayers();
+        float dist = Vector3.Distance(transform.position, playerTransform.position);
+        if (dist < howCloseToPlayer)
+            players.Add(playerTransform);
     }
 }

@@ -10,9 +10,14 @@ public class ExpBar : MonoBehaviour
     public TextMeshProUGUI levelText;
 
     private LevelUpSystem levelUpSystem;
-    
+
     private float searchTimer = 0f;
     private const float SEARCH_INTERVAL = 1f;
+
+    private int lastLevel = -1;
+    private int lastExp = -1;
+    private int lastExpToNext = -1;
+    private bool lastWasMaxLevel = false;
 
     void Start()
     {
@@ -59,38 +64,35 @@ public class ExpBar : MonoBehaviour
 
         if (levelUpSystem != null)
         {
+            bool isMax = levelUpSystem.IsMaxLevel;
+            int level = levelUpSystem.CurrentLevel;
+            int exp = Mathf.CeilToInt(levelUpSystem.CurrentExp);
+            int expToNext = Mathf.CeilToInt(levelUpSystem.ExpToNextLevel);
+
             if (expSlider != null)
-            {
-                if (levelUpSystem.IsMaxLevel)
-                {
-                    expSlider.value = 1f;
-                }
-                else
-                {
-                    expSlider.value = (levelUpSystem.ExpToNextLevel > 0) ? (levelUpSystem.CurrentExp / levelUpSystem.ExpToNextLevel) : 0;
-                }
-            }
+                expSlider.value = isMax ? 1f : ((expToNext > 0) ? (levelUpSystem.CurrentExp / levelUpSystem.ExpToNextLevel) : 0);
 
             if (levelText != null)
             {
-                if (levelUpSystem.IsMaxLevel)
+                if (isMax != lastWasMaxLevel || level != lastLevel || exp != lastExp || expToNext != lastExpToNext)
                 {
-                    levelText.text = $"Current Level {levelUpSystem.CurrentLevel}: MAX";
-                }
-                else
-                {
-                    levelText.text = $"Current Level {levelUpSystem.CurrentLevel}: {Mathf.CeilToInt(levelUpSystem.CurrentExp)} / {Mathf.CeilToInt(levelUpSystem.ExpToNextLevel)}";
+                    lastWasMaxLevel = isMax;
+                    lastLevel = level;
+                    lastExp = exp;
+                    lastExpToNext = expToNext;
+                    levelText.text = isMax
+                        ? $"Current Level {level}: MAX"
+                        : $"Current Level {level}: {exp} / {expToNext}";
                 }
             }
         }
         else
         {
             if (expSlider != null)
-            {
                 expSlider.value = 0;
-            }
-            if (levelText != null)
+            if (levelText != null && lastLevel != -1)
             {
+                lastLevel = -1;
                 levelText.text = "Current Level: ---";
             }
         }

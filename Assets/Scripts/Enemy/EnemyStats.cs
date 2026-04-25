@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 
-public class EnemyStats : MonoBehaviour, IHasHealth
+public class EnemyStats : MonoBehaviour, IHasHealth, IHittable
 {
     [Header("Health Settings")]
     [Tooltip("Maximum hit points of the enemy.")]
@@ -32,54 +32,17 @@ public class EnemyStats : MonoBehaviour, IHasHealth
 
     public void TakeDamage(float amount)
     {
-        if(amount <= 0 || currentHP <= 0)
-            return;
-        if (weaponDmgControl != null)
-        {
-            bool allWeaponsInactive = true;
-            if (weaponDmgControl.smallCanonManager != null)
-            {
-                foreach (var canon in weaponDmgControl.smallCanonManager.canons)
-                {
-                    if (canon != null && canon.gameObject.activeInHierarchy)
-                        allWeaponsInactive = false;
-                }
-            }
-            if (weaponDmgControl.turretsManager != null)
-            {
-                foreach (var turret in weaponDmgControl.turretsManager.turrets)
-                {
-                    if (turret != null && turret.gameObject.activeInHierarchy)
-                        allWeaponsInactive = false;
-                }
-            }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
-            {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
-            }
-            if (!allWeaponsInactive)
-            {
-                return;
-            }
-        }
+        if (amount <= 0 || currentHP <= 0) return;
+        if (weaponDmgControl != null && !weaponDmgControl.AllWeaponsInactive) return;
+
         currentHP -= amount;
-        if(currentHP <= 0)
-        {
-            currentHP = 0;
-            HandleDeath();
-        }
+        if (currentHP <= 0) { currentHP = 0; HandleDeath(); }
         forceRespawnTimer = -1f;
     }
 
     private void HandleDeath()
     {
-        if (deathVFX != null)
-        {
-            GameObject vfx = Instantiate(deathVFX, transform.position, transform.rotation);
-            Destroy(vfx, 5f);
-        }
+        if (deathVFX != null) { var vfx = Instantiate(deathVFX, transform.position, transform.rotation); Destroy(vfx, 5f); }
         onDeath?.Invoke();
         Destroy(gameObject);
     }
@@ -89,41 +52,12 @@ public class EnemyStats : MonoBehaviour, IHasHealth
 
     void Update()
     {
-        bool allWeaponsInactive = true;
-        if (weaponDmgControl != null)
-        {
-            if (weaponDmgControl.smallCanonManager != null)
-            {
-                foreach (var canon in weaponDmgControl.smallCanonManager.canons)
-                {
-                    if (canon != null && canon.gameObject.activeInHierarchy)
-                        allWeaponsInactive = false;
-                }
-            }
-            if (weaponDmgControl.turretsManager != null)
-            {
-                foreach (var turret in weaponDmgControl.turretsManager.turrets)
-                {
-                    if (turret != null && turret.gameObject.activeInHierarchy)
-                        allWeaponsInactive = false;
-                }
-            }
-            BigCanon[] bigCanons = GetComponentsInChildren<BigCanon>(true);
-            foreach (var bigCanon in bigCanons)
-            {
-                if (bigCanon != null && bigCanon.gameObject.activeInHierarchy)
-                    allWeaponsInactive = false;
-            }
-        }
+        bool allInactive = weaponDmgControl == null || weaponDmgControl.AllWeaponsInactive;
 
-        if (allWeaponsInactive && forceRespawnTimer < 0f)
-        {
+        if (allInactive && forceRespawnTimer < 0f)
             forceRespawnTimer = FORCE_RESPAWN_DELAY;
-        }
-        else if (!allWeaponsInactive)
-        {
+        else if (!allInactive)
             forceRespawnTimer = -1f;
-        }
 
         if (forceRespawnTimer > 0f)
         {
@@ -131,12 +65,9 @@ public class EnemyStats : MonoBehaviour, IHasHealth
             if (forceRespawnTimer <= 0f)
             {
                 forceRespawnTimer = -1f;
-                if (weaponDmgControl != null)
-                {
-                    weaponDmgControl.ReviveAllTurrets();
-                    weaponDmgControl.ReviveAllCanons();
-                    weaponDmgControl.ReviveAllBigCanons();
-                }
+                weaponDmgControl?.ReviveAllTurrets();
+                weaponDmgControl?.ReviveAllCanons();
+                weaponDmgControl?.ReviveAllBigCanons();
             }
         }
     }

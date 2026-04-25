@@ -12,16 +12,45 @@ public class AmmoUI : MonoBehaviour
     public bool showText = true;
 
     private PlayerWeaponManager weaponManager;
+    private float searchTimer = 0f;
+    private const float SEARCH_INTERVAL = 1f;
+
+    private int lastBullets = -1;
+    private int lastMaxBullets = -1;
+    private bool lastIsInfinite = false;
+    private int lastMissiles = -1;
+    private int lastMaxMissiles = -1;
+
+    private void Start()
+    {
+        // Try GameManager cached reference first — avoids a scene-wide FindObjectOfType.
+        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+            weaponManager = GameManager.Instance.currentPlayer.GetComponent<PlayerWeaponManager>();
+
+        if (weaponManager == null)
+            weaponManager = FindObjectOfType<PlayerWeaponManager>();
+    }
+
+    // Called by GameManager after player spawns.
+    public void OnPlayerSpawned(GameObject player)
+    {
+        if (player != null)
+            weaponManager = player.GetComponent<PlayerWeaponManager>();
+    }
 
     private void Update()
     {
-        // Keep searching for the weapon manager if not found
         if (weaponManager == null)
         {
-            weaponManager = FindObjectOfType<PlayerWeaponManager>();
-            // If still not found, skip updating UI this frame
+            searchTimer += Time.deltaTime;
+            if (searchTimer < SEARCH_INTERVAL) return;
+            searchTimer = 0f;
+
+            if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+                weaponManager = GameManager.Instance.currentPlayer.GetComponent<PlayerWeaponManager>();
             if (weaponManager == null)
-                return;
+                weaponManager = FindObjectOfType<PlayerWeaponManager>();
+            if (weaponManager == null) return;
         }
 
         UpdateAmmoUI();
@@ -29,17 +58,30 @@ public class AmmoUI : MonoBehaviour
 
     private void UpdateAmmoUI()
     {
-        // Machine Gun
         if (machineGunAmmoText != null && showText)
         {
-            if (weaponManager.isInfinite)
-                machineGunAmmoText.text = "∞ / " + weaponManager.maxBullets;
-            else
-                machineGunAmmoText.text = weaponManager.GetCurrentBullets() + " / " + weaponManager.maxBullets;
+            int curBullets = weaponManager.GetCurrentBullets();
+            int maxBullets = weaponManager.maxBullets;
+            bool infinite = weaponManager.isInfinite;
+            if (infinite != lastIsInfinite || curBullets != lastBullets || maxBullets != lastMaxBullets)
+            {
+                machineGunAmmoText.text = infinite ? ("∞ / " + maxBullets) : (curBullets + " / " + maxBullets);
+                lastBullets = curBullets;
+                lastMaxBullets = maxBullets;
+                lastIsInfinite = infinite;
+            }
         }
 
-        // Missile
         if (missileAmmoText != null && showText)
-            missileAmmoText.text = weaponManager.GetCurrentMissiles() + " / " + weaponManager.maxMissiles;
+        {
+            int curMissiles = weaponManager.GetCurrentMissiles();
+            int maxMissiles = weaponManager.maxMissiles;
+            if (curMissiles != lastMissiles || maxMissiles != lastMaxMissiles)
+            {
+                missileAmmoText.text = curMissiles + " / " + maxMissiles;
+                lastMissiles = curMissiles;
+                lastMaxMissiles = maxMissiles;
+            }
+        }
     }
-} 
+}

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat)",
+      "Read(//tmp/**)",
+      "Bash(rm FixAllHLSLErrors.bat FixAllShaders.bat FixShaders.ps1 FixShadersSimple.bat GitCommit.bat GitInit.bat GitPush.bat GitStatus.bat RegenerateProject.bat VerifyFix.bat)",
+      "Bash(ls *.bat *.ps1)",
+      "Bash(git rm *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

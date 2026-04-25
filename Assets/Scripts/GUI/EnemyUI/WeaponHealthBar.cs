@@ -1,18 +1,10 @@
 using UnityEngine;
-using UnityEngine.UI;
 using TMPro;
 
-public class WeaponHealthBar : MonoBehaviour
+public class WeaponHealthBar : DualSliderBar
 {
-    [Header("UI Sliders")]
-    public Slider normalHealthBarSlider;
-    public Slider easeHealthBarSlider;
-
     [Header("UI Text (Optional)")]
     public TextMeshProUGUI healthText;
-
-    [Header("Animation Settings")]
-    public float lerpSpeed = 0.05f;
 
     [Header("Fade Settings")]
     public float hideDelay = 3f;
@@ -23,6 +15,8 @@ public class WeaponHealthBar : MonoBehaviour
     private int currentHP;
 
     private Camera activeCamera;
+    private Camera cachedMainCamera;
+    private Camera[] cachedPlayerCameras;
     private Transform playerTransform;
 
     private float lastDamageTime = -100f;
@@ -37,6 +31,9 @@ public class WeaponHealthBar : MonoBehaviour
     private float playerSearchTimer = 0f;
     private const float PLAYER_SEARCH_INTERVAL = 2f;
 
+    private int lastDisplayedHP = -1;
+    private int lastDisplayedMaxHP = -1;
+
     void Awake()
     {
         canvasGroup = GetComponent<CanvasGroup>();
@@ -49,6 +46,7 @@ public class WeaponHealthBar : MonoBehaviour
 
     void Start()
     {
+        cachedMainCamera = Camera.main;
         FindPlayerAndCamera();
         turretControl = GetComponentInParent<TurretControl>() ?? GetComponent<TurretControl>();
         cannonControl = GetComponentInParent<SmallCanonControl>() ?? GetComponent<SmallCanonControl>();
@@ -98,16 +96,12 @@ public class WeaponHealthBar : MonoBehaviour
         if (currentHP < 0) currentHP = 0;
 
         float percent = (maxHP > 0) ? (float)currentHP / maxHP : 0;
-        if (normalHealthBarSlider != null)
-            normalHealthBarSlider.value = percent;
+        UpdateBars(percent);
 
-        if (easeHealthBarSlider != null && normalHealthBarSlider != null && easeHealthBarSlider.value != normalHealthBarSlider.value)
+        if (healthText != null && (currentHP != lastDisplayedHP || maxHP != lastDisplayedMaxHP))
         {
-            easeHealthBarSlider.value = Mathf.Lerp(easeHealthBarSlider.value, normalHealthBarSlider.value, lerpSpeed);
-        }
-
-        if (healthText != null)
-        {
+            lastDisplayedHP = currentHP;
+            lastDisplayedMaxHP = maxHP;
             healthText.text = $"{currentHP} / {maxHP}";
         }
 
@@ -168,32 +162,37 @@ public class WeaponHealthBar : MonoBehaviour
 
     void FindPlayerAndCamera()
     {
+        Transform newTransform = null;
         if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+            newTransform = GameManager.Instance.currentPlayer.transform;
+        else
         {
-            playerTransform = GameManager.Instance.currentPlayer.transform;
-            activeCamera = GetActivePlayerCamera(playerTransform);
-            return;
+            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+            if (playerObj != null)
+                newTransform = playerObj.transform;
         }
-        
-        GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-        if (playerObj != null)
+
+        if (newTransform != playerTransform)
         {
-            playerTransform = playerObj.transform;
-            activeCamera = GetActivePlayerCamera(playerTransform);
+            playerTransform = newTransform;
+            cachedPlayerCameras = null;
         }
+        activeCamera = GetActivePlayerCamera(playerTransform);
     }
 
     Camera GetActivePlayerCamera(Transform player)
     {
-        if (player == null) return Camera.main;
-        
-        Camera[] cams = player.GetComponentsInChildren<Camera>(true);
-        foreach (Camera cam in cams)
+        if (player == null) return cachedMainCamera;
+
+        if (cachedPlayerCameras == null || cachedPlayerCameras.Length == 0)
+            cachedPlayerCameras = player.GetComponentsInChildren<Camera>(true);
+
+        foreach (Camera cam in cachedPlayerCameras)
         {
-            if (cam.enabled)
+            if (cam != null && cam.enabled)
                 return cam;
         }
-        return cams.Length > 0 ? cams[0] : Camera.main;
+        return cachedPlayerCameras.Length > 0 ? cachedPlayerCameras[0] : cachedMainCamera;
     }
 
     public void SetHealth(int current, int max)

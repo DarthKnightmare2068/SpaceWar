@@ -1,24 +1,19 @@
 using System.Collections;
 using UnityEngine;
-using UnityEngine.UI;
 using TMPro;
 
-public class PlayerHealthBar : MonoBehaviour
+public class PlayerHealthBar : DualSliderBar
 {
-    [Header("UI Sliders")]
-    public Slider normalHealthBarSlider;
-    public Slider easeHealthBarSlider;
-
     [Header("UI Text (Optional)")]
     public TextMeshProUGUI healthText;
 
-    [Header("Animation Settings")]
-    private float lerpSpeed = 0.05f;
-
     private PlaneStats playerStats;
-    
+
     private float playerSearchTimer = 0f;
     private const float PLAYER_SEARCH_INTERVAL = 0.5f;
+
+    private int lastDisplayedHP = -1;
+    private int lastDisplayedMaxHP = -1;
 
     void Start()
     {
@@ -59,19 +54,13 @@ public class PlayerHealthBar : MonoBehaviour
 
         if (playerStats != null)
         {
-            normalHealthBarSlider.value = (playerStats.MaxHP > 0) ? (playerStats.CurrentHP / (float)playerStats.MaxHP) : 0;
-
-            if (easeHealthBarSlider.value != normalHealthBarSlider.value)
-            {
-                easeHealthBarSlider.value = Mathf.Lerp(easeHealthBarSlider.value, normalHealthBarSlider.value, lerpSpeed);
-            }
-
+            float percent = (playerStats.MaxHP > 0) ? (playerStats.CurrentHP / (float)playerStats.MaxHP) : 0;
+            UpdateBars(percent);
             UpdateHealthText(playerStats.CurrentHP, playerStats.MaxHP);
         }
         else
         {
-            normalHealthBarSlider.value = 0;
-            easeHealthBarSlider.value = 0;
+            ForceSetBars(0f);
             UpdateHealthText(0, 0);
         }
     }
@@ -98,10 +87,13 @@ public class PlayerHealthBar : MonoBehaviour
 
     void UpdateHealthText(float current, float max)
     {
-        if (healthText != null)
-        {
-            healthText.text = $"HP: {Mathf.CeilToInt(current)} / {Mathf.CeilToInt(max)}";
-        }
+        if (healthText == null) return;
+        int hp = Mathf.CeilToInt(current);
+        int maxHp = Mathf.CeilToInt(max);
+        if (hp == lastDisplayedHP && maxHp == lastDisplayedMaxHP) return;
+        lastDisplayedHP = hp;
+        lastDisplayedMaxHP = maxHp;
+        healthText.text = $"HP: {hp} / {maxHp}";
     }
     
     public void OnPlayerSpawned(GameObject player)

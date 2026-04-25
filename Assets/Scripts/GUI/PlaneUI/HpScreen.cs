@@ -24,10 +24,14 @@ public class HpScreen : MonoBehaviour
 
     void Update()
     {
-        // Auto-find player plane if missing or destroyed
+        // Auto-find player plane if missing or destroyed — prefer GameManager cache
         if (planeStats == null || !planeStats.gameObject.activeInHierarchy)
         {
-            var playerObj = GameObject.FindGameObjectWithTag("Player");
+            GameObject playerObj = null;
+            if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+                playerObj = GameManager.Instance.currentPlayer;
+            else
+                playerObj = GameObject.FindGameObjectWithTag("Player");
             if (playerObj != null)
                 planeStats = playerObj.GetComponent<PlaneStats>();
         }

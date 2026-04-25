@@ -51,22 +51,7 @@ public class PlayerBullet : MonoBehaviour
 
     private void HandleTurretCollision(Collision collision)
     {
-        var turret = collision.gameObject.GetComponentInParent<TurretControl>();
-        var smallCanon = collision.gameObject.GetComponentInParent<SmallCanonControl>();
-        var bigCanon = collision.gameObject.GetComponentInParent<BigCanon>();
-        
-        if (turret != null)
-        {
-            turret.TakeDamage(1);
-        }
-        else if (smallCanon != null)
-        {
-            smallCanon.TakeDamage(1);
-        }
-        else if (bigCanon != null)
-        {
-            bigCanon.TakeDamage(1);
-        }
+        DamageHelper.TryDealDamageSilent(collision.collider, 1f);
     }
 
     private void HandleEnemyCollision(Collision collision)

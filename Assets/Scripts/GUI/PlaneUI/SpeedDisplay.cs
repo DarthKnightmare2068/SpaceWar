@@ -43,33 +43,15 @@ public class SpeedDisplay : MonoBehaviour
 
     void FindPlayer()
     {
-        // Try cached GameManager reference first (no search)
-        if (GameManager.Instance != null && GameManager.Instance.currentPlayer != null)
+        if (GameEntityRegistry.PlayerObject != null)
         {
-            currentPlayer = GameManager.Instance.currentPlayer.GetComponent<PlaneControl>();
-            if (currentPlayer != null)
-            {
-                return;
-            }
-        }
-        
-        // Fallback to tag search
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
-        if(player != null)
-        {
-            currentPlayer = player.GetComponent<PlaneControl>();
-            if(currentPlayer != null)
-            {
-                return;
-            }
+            currentPlayer = GameEntityRegistry.PlayerObject.GetComponent<PlaneControl>();
+            if (currentPlayer != null) return;
         }
 
-        // Last resort: FindObjectsOfType (expensive, avoid if possible)
-        PlaneControl[] planeControls = FindObjectsOfType<PlaneControl>();
-        if(planeControls.Length > 0)
-        {
-            currentPlayer = planeControls[0];
-        }
+        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        if (player != null)
+            currentPlayer = player.GetComponent<PlaneControl>();
     }
 
     void UpdateSpeedDisplay()
