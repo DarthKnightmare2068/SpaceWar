@@ -31,12 +31,26 @@ public class AutoTargetLock : MonoBehaviour
     public System.Action<Transform> OnTargetLost;
     
     private List<Transform> enemiesInRange = new List<Transform>();
+    private HashSet<Transform> enemiesInRangeSet = new HashSet<Transform>();
     private float nextEnemyScanTime = 0f;
     private bool isInitialized = false;
-    
+
+    private float sqrMissileFireRange;
+    private float sqrLockCircleRadius;
+
+    private Collider[] scanBuffer = new Collider[128];
+    private bool scanBufferSaturationWarned = false;
+
     void Start()
     {
         InitializeReferences();
+    }
+
+    private void RefreshCachedRanges()
+    {
+        if (weaponManager != null)
+            sqrMissileFireRange = weaponManager.missileFireRange * weaponManager.missileFireRange;
+        sqrLockCircleRadius = lockCircleRadius * lockCircleRadius;
     }
 
     private void InitializeReferences()
@@ -60,8 +74,10 @@ public class AutoTargetLock : MonoBehaviour
         }
         
         isInitialized = (targetingCamera != null && weaponManager != null);
+
+        if (isInitialized) RefreshCachedRanges();
     }
-    
+
     void Update()
     {
         if (!isInitialized)
@@ -103,51 +119,87 @@ public class AutoTargetLock : MonoBehaviour
     void FindEnemiesInRange()
     {
         enemiesInRange.Clear();
-        
+        enemiesInRangeSet.Clear();
+
         if (weaponManager == null) return;
-        
-        foreach (string tag in targetTags)
+
+        RefreshCachedRanges();
+
+        // enemyLayer defaults to -1 (Everything) so the spatial query has parity with the
+        // old FindGameObjectsWithTag scan when no dedicated Enemy layer is configured.
+        // Tag filtering below is the actual enemy filter — assigning a real Enemy layer
+        // in the prefab would tighten this query and improve perf further.
+        int mask = enemyLayer.value == 0 ? -1 : enemyLayer.value;
+
+        int count = Physics.OverlapSphereNonAlloc(transform.position, weaponManager.missileFireRange, scanBuffer, mask);
+
+        if (count == scanBuffer.Length)
         {
-            GameObject[] candidates = GameObject.FindGameObjectsWithTag(tag);
-            foreach (GameObject obj in candidates)
+            if (!scanBufferSaturationWarned)
             {
-                if (obj == null || !obj.activeInHierarchy) continue;
-                float distance = Vector3.Distance(transform.position, obj.transform.position);
-                if (distance <= weaponManager.missileFireRange)
-                {
-                    enemiesInRange.Add(obj.transform);
-                }
+                Debug.LogWarning($"[AutoTargetLock] OverlapSphere scan buffer saturated at {scanBuffer.Length}; doubling and re-scanning. Consider assigning a dedicated Enemy layer to reduce hit count.");
+                scanBufferSaturationWarned = true;
+            }
+            scanBuffer = new Collider[scanBuffer.Length * 2];
+            count = Physics.OverlapSphereNonAlloc(transform.position, weaponManager.missileFireRange, scanBuffer, mask);
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            Transform candidate = scanBuffer[i].transform;
+            if (candidate == null) continue;
+
+            Transform tagged = FindTaggedAncestor(candidate);
+            if (tagged != null) enemiesInRangeSet.Add(tagged);
+        }
+
+        foreach (Transform t in enemiesInRangeSet) enemiesInRange.Add(t);
+    }
+
+    private Transform FindTaggedAncestor(Transform t)
+    {
+        if (targetTags == null) return null;
+        for (int i = 0; i < targetTags.Length; i++)
+        {
+            string tag = targetTags[i];
+            if (string.IsNullOrEmpty(tag)) continue;
+            Transform p = t;
+            while (p != null)
+            {
+                if (p.CompareTag(tag)) return p;
+                p = p.parent;
             }
         }
+        return null;
     }
     
     void TryLockNewTarget()
     {
         Transform bestTarget = null;
-        float bestDistance = float.MaxValue;
-        
+        float bestSqrDistance = float.MaxValue;
+
         foreach (Transform enemy in enemiesInRange)
         {
             if (enemy == null || !enemy.gameObject.activeInHierarchy) continue;
-            
+
             if (!IsInLockCircle(enemy)) continue;
-            
+
             Transform lockTarget = GetLockableTarget(enemy);
-            
+
             if (lockTarget != null)
             {
-                float distance = Vector3.Distance(transform.position, lockTarget.position);
-                if (distance <= weaponManager.missileFireRange && distance < bestDistance)
+                float sqrDistance = (lockTarget.position - transform.position).sqrMagnitude;
+                if (sqrDistance <= sqrMissileFireRange && sqrDistance < bestSqrDistance)
                 {
                     if (!requireLineOfSight || HasLineOfSight(lockTarget))
                     {
                         bestTarget = lockTarget;
-                        bestDistance = distance;
+                        bestSqrDistance = sqrDistance;
                     }
                 }
             }
         }
-        
+
         if (bestTarget != null)
         {
             LockTarget(bestTarget);
@@ -156,18 +208,18 @@ public class AutoTargetLock : MonoBehaviour
 
     private Transform GetLockableTarget(Transform enemy)
     {
-        var enemyStats = enemy.GetComponentInParent<EnemyStats>();
-        if (enemyStats != null) return enemyStats.transform;
-        
-        var turret = enemy.GetComponentInParent<TurretControl>();
-        if (turret != null) return turret.transform;
-        
-        var smallCanon = enemy.GetComponentInParent<SmallCanonControl>();
-        if (smallCanon != null) return smallCanon.transform;
-        
-        var bigCanon = enemy.GetComponentInParent<BigCanon>();
-        if (bigCanon != null) return bigCanon.transform;
-        
+        if (enemy.TryGetComponent<EnemyStats>(out var enemyStats) || (enemyStats = enemy.GetComponentInParent<EnemyStats>()) != null)
+            return enemyStats.transform;
+
+        if (enemy.TryGetComponent<TurretControl>(out var turret) || (turret = enemy.GetComponentInParent<TurretControl>()) != null)
+            return turret.transform;
+
+        if (enemy.TryGetComponent<SmallCanonControl>(out var smallCanon) || (smallCanon = enemy.GetComponentInParent<SmallCanonControl>()) != null)
+            return smallCanon.transform;
+
+        if (enemy.TryGetComponent<BigCanon>(out var bigCanon) || (bigCanon = enemy.GetComponentInParent<BigCanon>()) != null)
+            return bigCanon.transform;
+
         return null;
     }
 
@@ -190,13 +242,13 @@ public class AutoTargetLock : MonoBehaviour
     private string GetTargetTypeString(Transform target)
     {
         if (target == null) return "None";
-        
-        if (target.GetComponent<TurretControl>() != null) return "Turret";
-        if (target.GetComponent<SmallCanonControl>() != null) return "Small Cannon";
-        if (target.GetComponent<BigCanon>() != null) return "Big Cannon";
-        if (target.GetComponent<EnemyStats>() != null) return "Enemy Ship";
-        if (target.GetComponent<MainBossStats>() != null) return "Main Boss";
-        
+
+        if (target.TryGetComponent<TurretControl>(out _)) return "Turret";
+        if (target.TryGetComponent<SmallCanonControl>(out _)) return "Small Cannon";
+        if (target.TryGetComponent<BigCanon>(out _)) return "Big Cannon";
+        if (target.TryGetComponent<EnemyStats>(out _)) return "Enemy Ship";
+        if (target.TryGetComponent<MainBossStats>(out _)) return "Main Boss";
+
         return "Unknown";
     }
     
@@ -205,33 +257,33 @@ public class AutoTargetLock : MonoBehaviour
         if (target == null) return false;
         if (!target.gameObject.activeInHierarchy) return false;
         if (weaponManager == null) return false;
-        
-        float distance = Vector3.Distance(transform.position, target.position);
-        if (distance > weaponManager.missileFireRange) return false;
-        
+
+        float sqrDistance = (target.position - transform.position).sqrMagnitude;
+        if (sqrDistance > sqrMissileFireRange) return false;
+
         if (targetingCamera == null) return false;
         Vector3 viewportPos = targetingCamera.WorldToViewportPoint(target.position);
         if (viewportPos.z <= 0) return false;
-        
+
         if (requireLineOfSight && !HasLineOfSight(target))
         {
             return false;
         }
-        
+
         return true;
     }
-    
+
     bool IsInLockCircle(Transform target)
     {
         if (targetingCamera == null) return false;
-        
+
         Vector3 viewportPos = targetingCamera.WorldToViewportPoint(target.position);
-        
+
         if (viewportPos.z <= 0) return false;
-        
-        float distanceFromCenter = Vector2.Distance(new Vector2(viewportPos.x, viewportPos.y), new Vector2(0.5f, 0.5f));
-        
-        return distanceFromCenter <= lockCircleRadius;
+
+        float dx = viewportPos.x - 0.5f;
+        float dy = viewportPos.y - 0.5f;
+        return (dx * dx + dy * dy) <= sqrLockCircleRadius;
     }
     
     void LockTarget(Transform target)
