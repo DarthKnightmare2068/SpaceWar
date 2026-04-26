@@ -104,15 +104,16 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth
     float IHasHealth.CurrentHP => currentHP;
     float IHasHealth.MaxHP => maxHP;
 
-    public void ControlTurret(Transform enemy, float howCloseToEnemy)
+    public void ControlTurret(Transform enemy, float howCloseToEnemySqr)
     {
         if (!gameObject.activeInHierarchy) return;
         if(enemy != null)
         {
             directionToEnemy = enemy.position - gunBarrel.position;
-            float distanceToEnemy = Vector3.Distance(gunBarrel.position, enemy.position);
+            // Bolt: Optimized - Use sqrMagnitude to avoid expensive square root in high-frequency update
+            float distanceToEnemySqr = directionToEnemy.sqrMagnitude;
 
-            if(distanceToEnemy < howCloseToEnemy)
+            if(distanceToEnemySqr < howCloseToEnemySqr)
             {
                 Quaternion targetRotation = Quaternion.LookRotation(directionToEnemy);
 
