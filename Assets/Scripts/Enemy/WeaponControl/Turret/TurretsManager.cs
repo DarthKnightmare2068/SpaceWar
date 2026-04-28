@@ -23,6 +23,8 @@ public class TurretsManager : MonoBehaviour
     public bool trackPlayerInstantly = false;
 
     private float howCloseToPlayer;
+    // Bolt: Optimized - Pre-calculate squared distance threshold to avoid per-frame linear calculations.
+    private float howCloseToPlayerSqr;
     private List<Transform> players = new List<Transform>();
 
     private Dictionary<TurretControl, Transform> cachedAssignment = new Dictionary<TurretControl, Transform>();
@@ -57,6 +59,8 @@ public class TurretsManager : MonoBehaviour
             howCloseToPlayer = cachedDmgControl.GetTurretFireRange();
         else
             howCloseToPlayer = 100f;
+
+        howCloseToPlayerSqr = howCloseToPlayer * howCloseToPlayer;
 
         SetAllTurretsHP();
         maxTurretCount = turrets.Count;
@@ -104,7 +108,7 @@ public class TurretsManager : MonoBehaviour
             var turret = turrets[i];
             if (turret == null) continue;
             cachedAssignment.TryGetValue(turret, out Transform target);
-            turret.ControlTurret(target, howCloseToPlayer);
+            turret.ControlTurret(target, howCloseToPlayerSqr);
         }
 
         backupRefreshTimer += Time.deltaTime;
@@ -147,10 +151,11 @@ public class TurretsManager : MonoBehaviour
         {
             if (player == null) continue;
 
+            // Bolt: Optimized - Use sqrMagnitude for sorting to eliminate square root overhead.
             sortedTurretCache.Sort((a, b) =>
             {
-                float da = a == null ? float.MaxValue : Vector3.Distance(a.transform.position, player.position);
-                float db = b == null ? float.MaxValue : Vector3.Distance(b.transform.position, player.position);
+                float da = a == null ? float.MaxValue : (a.transform.position - player.position).sqrMagnitude;
+                float db = b == null ? float.MaxValue : (b.transform.position - player.position).sqrMagnitude;
                 return da.CompareTo(db);
             });
 
@@ -195,8 +200,8 @@ public class TurretsManager : MonoBehaviour
         var stats = playerTransform.GetComponent<PlaneStats>();
         if (stats != null && stats.CurrentHP <= 0) return;
 
-        float dist = Vector3.Distance(transform.position, playerTransform.position);
-        if (dist < howCloseToPlayer)
+        // Bolt: Optimized - Distance check using sqrMagnitude for performance.
+        if ((transform.position - playerTransform.position).sqrMagnitude < howCloseToPlayerSqr)
             players.Add(playerTransform);
     }
 }

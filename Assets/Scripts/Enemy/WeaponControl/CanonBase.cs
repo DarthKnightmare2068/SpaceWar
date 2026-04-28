@@ -30,6 +30,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
     protected float damage;
     protected float fireRate;
     protected float fireRange;
+    // Bolt: Optimized - Cache squared fire range to avoid expensive square root calculations in sqrMagnitude comparisons.
+    protected float fireRangeSqr;
     protected float currentLaserScale;
     protected float laserDamageInterval = 1f;
     protected float laserDamageTimer;
@@ -66,6 +68,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
 
         currentHP = maxHP;
         InitializeStats();
+        fireRangeSqr = fireRange * fireRange;
         FindPlayerTarget();
         StopLaserVFX();
 
@@ -197,7 +200,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
         float distance = maxLaserScale;
         RaycastHit hit;
         if (Physics.Raycast(gunBarrel.position, gunBarrel.forward, out hit, maxLaserScale, hittableLayers))
-            distance = Vector3.Distance(gunBarrel.position, hit.point);
+            // Bolt: Optimized - Use hit.distance instead of Vector3.Distance(gunBarrel.position, hit.point)
+            // because the distance is already calculated by the Raycast.
+            distance = hit.distance;
         currentLaserScale = distance;
         laserVFX.transform.localScale = new Vector3(currentLaserScale / 2f, currentLaserScale / 2f, currentLaserScale);
     }
@@ -232,8 +237,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
             rotationLimitTimer = 0f;
         }
 
-        float distanceToEnemy = Vector3.Distance(transform.position, enemy.position);
-        if (distanceToEnemy <= fireRange && canAimAtPlayer)
+        // Bolt: Optimized - Use sqrMagnitude instead of Vector3.Distance to save CPU cycles (no square root).
+        if ((transform.position - enemy.position).sqrMagnitude <= fireRangeSqr && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;
@@ -293,7 +298,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
                 laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(hit.point);
             if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
                 laserVFXPrefab.SetActive(true);
-            PlayLaserVFX(Vector3.Distance(gunBarrel.position, hit.point));
+            PlayLaserVFX(hit.distance);
             laserDamageTimer += Time.deltaTime;
             if (laserDamageTimer >= laserDamageInterval)
             {
