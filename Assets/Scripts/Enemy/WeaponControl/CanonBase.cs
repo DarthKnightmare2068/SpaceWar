@@ -30,6 +30,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
     protected float damage;
     protected float fireRate;
     protected float fireRange;
+    protected float fireRangeSqr; // Bolt: Optimized - Cached squared fire range
     protected float currentLaserScale;
     protected float laserDamageInterval = 1f;
     protected float laserDamageTimer;
@@ -66,6 +67,10 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
 
         currentHP = maxHP;
         InitializeStats();
+
+        // Bolt: Optimized - Cache squared fire range to avoid expensive square root calculations in Update
+        fireRangeSqr = fireRange * fireRange;
+
         FindPlayerTarget();
         StopLaserVFX();
 
@@ -114,13 +119,25 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
         }
 
         HandleTargeting();
-        HandleRotationAndFiring();
-        UpdateLaserScale();
 
-        if (!isTargetLocked)
+        // Bolt: Optimized - Refactored to perform a single Raycast and share results between Firing and Scaling
+        if (isTargetLocked)
+        {
+            RotateToTarget();
+
+            RaycastHit hit;
+            bool hasHit = Physics.Raycast(gunBarrel.position, gunBarrel.forward, out hit, maxLaserScale, hittableLayers);
+
+            HandleFiringWithRaycast(hasHit, hit);
+            UpdateLaserScaleWithRaycast(hasHit, hit);
+        }
+        else
         {
             StopLaserVFX();
             ResetToDefaultRotation();
+            if (laserVFXPrefab != null && laserVFXPrefab.activeSelf)
+                laserVFXPrefab.SetActive(false);
+            laserDamageTimer = 0f;
         }
     }
 
@@ -190,14 +207,23 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
         }
     }
 
+    // Bolt: Optimized - Use pre-calculated raycast distance to avoid redundant calculations and raycasts
+    protected void UpdateLaserScaleWithRaycast(bool hasHit, RaycastHit hit)
+    {
+        if (laserVFX == null || enemy == null) return;
+
+        currentLaserScale = hasHit ? hit.distance : maxLaserScale;
+        laserVFX.transform.localScale = new Vector3(currentLaserScale / 2f, currentLaserScale / 2f, currentLaserScale);
+    }
+
+    [System.Obsolete("Use UpdateLaserScaleWithRaycast instead to avoid redundant raycasts")]
     protected void UpdateLaserScale()
     {
-        // Only raycast when actually firing — skips the per-frame raycast on every idle canon.
         if (laserVFX == null || enemy == null || !isTargetLocked) return;
         float distance = maxLaserScale;
         RaycastHit hit;
         if (Physics.Raycast(gunBarrel.position, gunBarrel.forward, out hit, maxLaserScale, hittableLayers))
-            distance = Vector3.Distance(gunBarrel.position, hit.point);
+            distance = hit.distance; // Bolt: Optimized - Use hit.distance
         currentLaserScale = distance;
         laserVFX.transform.localScale = new Vector3(currentLaserScale / 2f, currentLaserScale / 2f, currentLaserScale);
     }
@@ -232,8 +258,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
             rotationLimitTimer = 0f;
         }
 
-        float distanceToEnemy = Vector3.Distance(transform.position, enemy.position);
-        if (distanceToEnemy <= fireRange && canAimAtPlayer)
+        // Bolt: Optimized - Use sqrMagnitude to avoid expensive square root calculations in Vector3.Distance
+        float distanceToEnemySqr = (transform.position - enemy.position).sqrMagnitude;
+        if (distanceToEnemySqr <= fireRangeSqr && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;
@@ -272,6 +299,37 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
         return true;
     }
 
+    // Bolt: Optimized - New method to handle firing logic using shared raycast result
+    protected void HandleFiringWithRaycast(bool hasHit, RaycastHit hit)
+    {
+        if (!gameObject.activeInHierarchy || enemy == null) return;
+
+        if (hasHit && hit.distance <= fireRange && hit.transform.CompareTag("Player"))
+        {
+            if (laserEndPoint != null && laserVFX != null)
+                laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(hit.point);
+            if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
+                laserVFXPrefab.SetActive(true);
+
+            PlayLaserVFX(hit.distance); // Bolt: Optimized - Use hit.distance
+
+            laserDamageTimer += Time.deltaTime;
+            if (laserDamageTimer >= laserDamageInterval)
+            {
+                laserDamageTimer = 0f;
+                hit.transform.GetComponent<PlaneStats>()?.TakeDamage((int)damage);
+            }
+        }
+        else
+        {
+            if (laserVFXPrefab != null && laserVFXPrefab.activeSelf)
+                laserVFXPrefab.SetActive(false);
+            StopLaserVFX();
+            laserDamageTimer = 0f;
+        }
+    }
+
+    [System.Obsolete("Use HandleFiringWithRaycast instead to avoid redundant raycasts")]
     protected void HandleRotationAndFiring()
     {
         if (!gameObject.activeInHierarchy) return;
@@ -293,7 +351,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
                 laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(hit.point);
             if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
                 laserVFXPrefab.SetActive(true);
-            PlayLaserVFX(Vector3.Distance(gunBarrel.position, hit.point));
+            PlayLaserVFX(hit.distance); // Bolt: Optimized - Use hit.distance
             laserDamageTimer += Time.deltaTime;
             if (laserDamageTimer >= laserDamageInterval)
             {

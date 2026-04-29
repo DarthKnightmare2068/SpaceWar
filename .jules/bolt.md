@@ -1,0 +1,3 @@
+## 2025-05-15 - Consolidating Physics Raycasts in Canon AI
+**Learning:** In Unity, complex AI entities like cannons often perform multiple raycasts per frame for different purposes (e.g., one for firing logic and another for visual effect scaling). Raycasting is a heavy physics operation. Additionally, calculating distance using `Vector3.Distance` after a raycast is redundant because `RaycastHit.distance` is already provided.
+**Action:** Consolidate raycasts into a single call per frame in the `Update` loop when the entity is in an active state. Pass the `RaycastHit` result and `hit.distance` to all dependent methods to eliminate redundant physics queries and distance calculations.
