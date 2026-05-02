@@ -30,6 +30,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
     protected float damage;
     protected float fireRate;
     protected float fireRange;
+    protected float fireRangeSqr;
     protected float currentLaserScale;
     protected float laserDamageInterval = 1f;
     protected float laserDamageTimer;
@@ -51,6 +52,10 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
 
     private GameObject activeLaserInstance;
 
+    // Bolt: Cache raycast result per frame to avoid redundant physics queries.
+    private RaycastHit cachedHit;
+    private int lastCachedFrame = -1;
+
     private const float TARGET_LOCK_DELAY = 1f;
     private const float ROTATION_LIMIT_DELAY = 2f;
     private const float PLAYER_SEARCH_INTERVAL = 1f;
@@ -66,6 +71,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
 
         currentHP = maxHP;
         InitializeStats();
+        // Bolt: Pre-calculate squared range to optimize distance comparisons in HandleTargeting.
+        fireRangeSqr = fireRange * fireRange;
         FindPlayerTarget();
         StopLaserVFX();
 
@@ -195,9 +202,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
         // Only raycast when actually firing — skips the per-frame raycast on every idle canon.
         if (laserVFX == null || enemy == null || !isTargetLocked) return;
         float distance = maxLaserScale;
-        RaycastHit hit;
-        if (Physics.Raycast(gunBarrel.position, gunBarrel.forward, out hit, maxLaserScale, hittableLayers))
-            distance = Vector3.Distance(gunBarrel.position, hit.point);
+        if (PerformCachedRaycast(maxLaserScale))
+            distance = cachedHit.distance;
         currentLaserScale = distance;
         laserVFX.transform.localScale = new Vector3(currentLaserScale / 2f, currentLaserScale / 2f, currentLaserScale);
     }
@@ -232,8 +238,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
             rotationLimitTimer = 0f;
         }
 
-        float distanceToEnemy = Vector3.Distance(transform.position, enemy.position);
-        if (distanceToEnemy <= fireRange && canAimAtPlayer)
+        // Bolt: Optimized using sqrMagnitude to avoid expensive square root calculation in Vector3.Distance.
+        float sqrDistanceToEnemy = (enemy.position - transform.position).sqrMagnitude;
+        if (sqrDistanceToEnemy <= fireRangeSqr && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;
@@ -286,19 +293,21 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
         }
 
         RotateToTarget();
-        RaycastHit hit;
-        if (Physics.Raycast(gunBarrel.position, gunBarrel.forward, out hit, fireRange, hittableLayers) && hit.transform.CompareTag("Player"))
+        if (PerformCachedRaycast(fireRange) && cachedHit.transform.CompareTag("Player"))
         {
             if (laserEndPoint != null && laserVFX != null)
-                laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(hit.point);
+                laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(cachedHit.point);
             if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
                 laserVFXPrefab.SetActive(true);
-            PlayLaserVFX(Vector3.Distance(gunBarrel.position, hit.point));
+            // Bolt: Re-use cached hit distance instead of re-calculating or re-querying.
+            PlayLaserVFX(cachedHit.distance);
             laserDamageTimer += Time.deltaTime;
             if (laserDamageTimer >= laserDamageInterval)
             {
                 laserDamageTimer = 0f;
-                hit.transform.GetComponent<PlaneStats>()?.TakeDamage((int)damage);
+                // Bolt: Optimized using TryGetComponent to avoid multiple lookups and unnecessary allocations.
+                if (cachedHit.transform.TryGetComponent<PlaneStats>(out var stats))
+                    stats.TakeDamage((int)damage);
             }
         }
         else
@@ -343,5 +352,18 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
     {
         body.rotation = Quaternion.Slerp(body.rotation, initialBodyRotation, maxRotationSpeed * Time.deltaTime);
         joint.localRotation = Quaternion.Slerp(joint.localRotation, initialJointLocalRotation, maxRotationSpeed * Time.deltaTime);
+    }
+
+    private bool PerformCachedRaycast(float maxDistance)
+    {
+        // Bolt: Use Time.frameCount for robust cache invalidation that survives subclass Update overrides.
+        if (lastCachedFrame != Time.frameCount)
+        {
+            // Bolt: Use the maximum potential range to ensure no regression for either firing or laser scaling.
+            float raycastDistance = Mathf.Max(fireRange, maxLaserScale);
+            Physics.Raycast(gunBarrel.position, gunBarrel.forward, out cachedHit, raycastDistance, hittableLayers);
+            lastCachedFrame = Time.frameCount;
+        }
+        return cachedHit.transform != null && cachedHit.distance <= maxDistance;
     }
 }
