@@ -1,0 +1,100 @@
+    {
+        if (autoTargetLock == null || weaponManager == null || missileLaunch == null) return false;
+        if (cachedMainCamera == null) cachedMainCamera = Camera.main;
+        if (cachedMainCamera == null) return false;
+
+        // Refresh cache at intervals instead of every call
+        enemyTargetCacheTimer += Time.deltaTime;
+        if (enemyTargetCacheTimer >= ENEMY_TARGET_CACHE_INTERVAL || cachedEnemyTargets == null)
+        {
+            enemyTargetCacheTimer = 0f;
+            RefreshEnemyTargetCache();
+        }
+
+        if (cachedEnemyTargets == null) return false;
+
+        // Use cached enemy list
+        float sqrFireRange = weaponManager.missileFireRange * weaponManager.missileFireRange;
+        float sqrLockRadius = autoTargetLock.lockCircleRadius * autoTargetLock.lockCircleRadius;
+
+        foreach (GameObject obj in cachedEnemyTargets)
+        {
+            if (obj == null || !obj.activeInHierarchy) continue;
+
+            // Bolt: Optimized - Use sqrMagnitude for distance checks in loop
+            float sqrDistance = (missileLaunch.transform.position - obj.transform.position).sqrMagnitude;
+            if (sqrDistance <= sqrFireRange)
+            {
+                Vector3 viewportPos = cachedMainCamera.WorldToViewportPoint(obj.transform.position);
+                float dx = viewportPos.x - 0.5f;
+                float dy = viewportPos.y - 0.5f;
+                float sqrDistFromCenter = dx * dx + dy * dy;
+
+                if (sqrDistFromCenter <= sqrLockRadius)
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void UpdateLaserUI()
+    {
+        if (laserActive == null)
+        {
+            isLaserInRange = false;
+        }
+        else
+        {
+            float range = laserActive.CurrentBeamLength;
+            bool inRange = false;
+
+            // Bolt: Optimized - Reuse cached raycast result from weaponManager
+            if (weaponManager != null && weaponManager.TryGetCachedHit(out RaycastHit hit))
+            {
+                if (hit.distance <= range && (hit.collider.CompareTag("Enemy") || hit.collider.CompareTag("Turret")))
+                {
+                    inRange = true;
+                }
+            }
+
+            isLaserInRange = inRange;
+        }
+
+        if (laserRangeText != null)
+        {
+            if (isLaserInRange)
+            {
+                blinkTimer += Time.deltaTime;
+                if (blinkTimer >= blinkInterval)
+                {
+                    laserRangeText.enabled = !laserRangeText.enabled;
+                    blinkTimer = 0f;
+                }
+                laserRangeText.text = "Laser in Fire Range!";
+            }
+            else
+            {
+                laserRangeText.enabled = false;
+                blinkTimer = 0f;
+            }
+        }
+    }
+
+    private void UpdateCheatUI()
+    {
+        if (playerStats != null && Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.J))
+        {
+            playerStats.canTakeDamage = !playerStats.canTakeDamage;
+            if (CheatHp != null)
+            {
+                CheatHp.gameObject.SetActive(true);
+                CheatHp.text = "CAN TAKE DAMAGE: " + (playerStats.canTakeDamage ? "ON" : "OFF");
+                cheatHpDisplayTimer = cheatHpDisplayDuration;
+            }
+        }
+
+        if (CheatHp != null && CheatHp.gameObject.activeSelf)
+        {
+            if (cheatHpDisplayTimer > 0f)

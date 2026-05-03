@@ -1,0 +1,100 @@
+using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
+
+public class TargetLockUI : MonoBehaviour
+{
+    [Header("UI References")]
+    public GameObject normalUI;
+    public GameObject machineGunUI;
+    public GameObject missileLockUI;
+    public TMP_Text laserRangeText;
+    public float blinkInterval = 0.5f;
+
+    [Header("AutoTarget Reference")]
+    public AutoTargetLock autoTargetLock;
+
+    [Header("Weapon Reference")]
+    public MachineGunControl machineGunControl;
+    public PlayerWeaponManager weaponManager;
+    public MissileLaunch missileLaunch;
+    public LaserActive laserActive;
+
+    [Header("Cheat/Debug UI")]
+    public TMP_Text CheatHp;
+    private float cheatHpDisplayTimer = 0f;
+    private const float cheatHpDisplayDuration = 1f;
+    private PlaneStats playerStats;
+
+    [Header("Missile Mode UI")]
+    public TMP_Text MissileModeText;
+    private float missileModeDisplayTimer = 0f;
+    private const float missileModeDisplayDuration = 1f;
+
+    private bool isLaserInRange = false;
+    private float blinkTimer = 0f;
+
+    private GameObject cachedPlayer;
+    private Camera cachedMainCamera;
+    private bool isInitialized = false;
+
+    private bool cachedEnemyInMissileView = false;
+    private float enemyInMissileViewTimer = 0f;
+    private const float ENEMY_IN_MISSILE_VIEW_INTERVAL = 0.2f;
+
+    // Cached enemy lists to avoid FindGameObjectsWithTag every frame
+    private GameObject[] cachedEnemyTargets;
+    private float enemyTargetCacheTimer = 0f;
+    private const float ENEMY_TARGET_CACHE_INTERVAL = 0.5f;
+
+    void Start()
+    {
+        cachedMainCamera = Camera.main;
+    }
+
+    void OnEnable()
+    {
+        GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
+        isInitialized = false;
+        TryInitializeReferences();
+    }
+
+    void OnDisable()
+    {
+        GameEntityRegistry.PlayerChanged -= HandlePlayerChanged;
+        DisconnectFromAutoTargetLock();
+    }
+
+    private void TryInitializeReferences()
+    {
+        if (cachedMainCamera == null)
+            cachedMainCamera = Camera.main;
+
+        if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
+            HandlePlayerChanged(player);
+        else
+            HandlePlayerChanged(null);
+    }
+
+    private void CachePlayerComponents(GameObject player)
+    {
+        cachedPlayer = player;
+
+        machineGunControl = cachedPlayer != null ? cachedPlayer.GetComponent<MachineGunControl>() : null;
+        weaponManager = cachedPlayer != null ? cachedPlayer.GetComponent<PlayerWeaponManager>() : null;
+        missileLaunch = cachedPlayer != null ? cachedPlayer.GetComponent<MissileLaunch>() : null;
+        laserActive = cachedPlayer != null ? cachedPlayer.GetComponent<LaserActive>() : null;
+        playerStats = cachedPlayer != null ? cachedPlayer.GetComponent<PlaneStats>() : null;
+        SetAutoTargetLock(cachedPlayer != null ? cachedPlayer.GetComponent<AutoTargetLock>() : null);
+    }
+
+    void Update()
+    {
+        if (!isInitialized || cachedPlayer == null || !cachedPlayer.activeInHierarchy)
+            return;
+
+        UpdateWeaponUI();
+        UpdateMissileUI();
+        UpdateLaserUI();
+        UpdateCheatUI();
+        UpdateMissileModeUI();

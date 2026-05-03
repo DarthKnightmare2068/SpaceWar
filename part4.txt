@@ -1,0 +1,131 @@
+            {
+                cheatHpDisplayTimer -= Time.deltaTime;
+                if (cheatHpDisplayTimer <= 0f)
+                {
+                    CheatHp.gameObject.SetActive(false);
+                }
+            }
+        }
+    }
+
+    private void UpdateMissileModeUI()
+    {
+        if (MissileModeText != null && MissileModeText.gameObject.activeSelf)
+        {
+            if (missileModeDisplayTimer > 0f)
+            {
+                missileModeDisplayTimer -= Time.deltaTime;
+                if (missileModeDisplayTimer <= 0f)
+                {
+                    MissileModeText.gameObject.SetActive(false);
+                }
+            }
+        }
+    }
+
+    private void ConnectToAutoTargetLock()
+    {
+        if (autoTargetLock == null) return;
+
+        autoTargetLock.OnTargetLocked -= OnTargetLocked;
+        autoTargetLock.OnTargetLost -= OnTargetLost;
+        autoTargetLock.OnTargetLocked += OnTargetLocked;
+        autoTargetLock.OnTargetLost += OnTargetLost;
+    }
+
+    private void DisconnectFromAutoTargetLock()
+    {
+        if (autoTargetLock == null) return;
+
+        autoTargetLock.OnTargetLocked -= OnTargetLocked;
+        autoTargetLock.OnTargetLost -= OnTargetLost;
+    }
+
+    void OnDestroy()
+    {
+        DisconnectFromAutoTargetLock();
+    }
+
+    private void OnTargetLocked(Transform target)
+    {
+        UpdateUI(true);
+    }
+
+    private void OnTargetLost(Transform target)
+    {
+        UpdateUI(false);
+    }
+
+    private void UpdateUI(bool targetLocked)
+    {
+        if (normalUI != null)
+        {
+            normalUI.SetActive(!targetLocked);
+        }
+
+        if (machineGunUI != null)
+        {
+            machineGunUI.SetActive(targetLocked);
+        }
+    }
+
+    private void UpdateMissileUIState(bool missileLocked)
+    {
+        if (missileLockUI != null)
+        {
+            missileLockUI.SetActive(missileLocked);
+        }
+    }
+
+    public void ForceShowNormal()
+    {
+        UpdateUI(false);
+    }
+
+    public void ForceShowTargetLock()
+    {
+        UpdateUI(true);
+    }
+
+    public void SetAutoTargetLock(AutoTargetLock targetLock)
+    {
+        DisconnectFromAutoTargetLock();
+
+        autoTargetLock = targetLock;
+
+        if (autoTargetLock != null)
+        {
+            ConnectToAutoTargetLock();
+        }
+    }
+
+    public void SetTargetLockUI(RectTransform uiElement)
+    {
+        if (uiElement != null)
+        {
+            machineGunUI = uiElement.gameObject;
+        }
+    }
+
+    public void ShowMissileMode()
+    {
+        if (MissileModeText != null && missileLaunch != null)
+        {
+            MissileModeText.gameObject.SetActive(true);
+            MissileModeText.color = Color.red;
+            if (missileLaunch.useAutoTargetLock)
+                MissileModeText.text = "Missile Mode: Auto Target Lock";
+            else
+                MissileModeText.text = "Missile Mode: Straight";
+            missileModeDisplayTimer = missileModeDisplayDuration;
+        }
+    }
+
+    private void HandlePlayerChanged(GameObject player)
+    {
+        CachePlayerComponents(player);
+        cachedEnemyTargets = null;
+        enemyTargetCacheTimer = 0f;
+        isInitialized = cachedPlayer != null;
+    }
+}

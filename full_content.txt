@@ -33,23 +33,19 @@ public class TargetLockUI : MonoBehaviour
 
     private bool isLaserInRange = false;
     private float blinkTimer = 0f;
-    
+
     private GameObject cachedPlayer;
     private Camera cachedMainCamera;
     private bool isInitialized = false;
-    
+
     private bool cachedEnemyInMissileView = false;
     private float enemyInMissileViewTimer = 0f;
     private const float ENEMY_IN_MISSILE_VIEW_INTERVAL = 0.2f;
-    
+
     // Cached enemy lists to avoid FindGameObjectsWithTag every frame
     private GameObject[] cachedEnemyTargets;
     private float enemyTargetCacheTimer = 0f;
     private const float ENEMY_TARGET_CACHE_INTERVAL = 0.5f;
-
-    // Bolt: Optimized - Cached squared values for performance
-    private float sqrMissileRange;
-    private float sqrLockCircleRadius;
 
     void Start()
     {
@@ -142,7 +138,7 @@ public class TargetLockUI : MonoBehaviour
     private void UpdateMissileUI()
     {
         bool missileUIActive = missileLockUI != null && missileLockUI.activeInHierarchy;
-        
+
         if (missileLaunch != null && !missileLaunch.useAutoTargetLock)
         {
             enemyInMissileViewTimer += Time.deltaTime;
@@ -151,7 +147,7 @@ public class TargetLockUI : MonoBehaviour
                 enemyInMissileViewTimer = 0f;
                 cachedEnemyInMissileView = CheckEnemyInMissileView();
             }
-            
+
             if (cachedEnemyInMissileView && !missileUIActive)
             {
                 UpdateMissileUIState(true);
@@ -164,18 +160,18 @@ public class TargetLockUI : MonoBehaviour
         else
         {
             if (autoTargetLock == null) return;
-            
+
             bool hasTarget = autoTargetLock.HasTarget();
             bool inMissileRange = false;
-            
+
             if (hasTarget && autoTargetLock.lockedTarget != null && weaponManager != null)
             {
-                // Bolt: Optimized - Use sqrMagnitude for range check with cached squared range
+                // Bolt: Optimized - Use sqrMagnitude for range check
                 Vector3 missileFromPos = missileLaunch != null ? missileLaunch.transform.position : transform.position;
                 float sqrMissileDistance = (missileFromPos - autoTargetLock.lockedTarget.position).sqrMagnitude;
-                inMissileRange = sqrMissileDistance <= sqrMissileRange;
+                inMissileRange = sqrMissileDistance <= (weaponManager.missileFireRange * weaponManager.missileFireRange);
             }
-            
+
             if (hasTarget && inMissileRange && !missileUIActive)
             {
                 UpdateMissileUIState(true);
@@ -190,7 +186,7 @@ public class TargetLockUI : MonoBehaviour
     private void RefreshEnemyTargetCache()
     {
         if (autoTargetLock == null || autoTargetLock.targetTags == null) return;
-        
+
         // Build combined list of all tagged objects
         System.Collections.Generic.List<GameObject> allTargets = new System.Collections.Generic.List<GameObject>();
         foreach (string tag in autoTargetLock.targetTags)
@@ -200,7 +196,7 @@ public class TargetLockUI : MonoBehaviour
         }
         cachedEnemyTargets = allTargets.ToArray();
     }
-    
+
     private bool CheckEnemyInMissileView()
     {
         if (autoTargetLock == null || weaponManager == null || missileLaunch == null) return false;
@@ -214,24 +210,27 @@ public class TargetLockUI : MonoBehaviour
             enemyTargetCacheTimer = 0f;
             RefreshEnemyTargetCache();
         }
-        
+
         if (cachedEnemyTargets == null) return false;
 
         // Use cached enemy list
+        float sqrFireRange = weaponManager.missileFireRange * weaponManager.missileFireRange;
+        float sqrLockRadius = autoTargetLock.lockCircleRadius * autoTargetLock.lockCircleRadius;
+
         foreach (GameObject obj in cachedEnemyTargets)
         {
             if (obj == null || !obj.activeInHierarchy) continue;
 
-            // Bolt: Optimized - Use sqrMagnitude for distance checks in loop with cached values
+            // Bolt: Optimized - Use sqrMagnitude for distance checks in loop
             float sqrDistance = (missileLaunch.transform.position - obj.transform.position).sqrMagnitude;
-            if (sqrDistance <= sqrMissileRange)
+            if (sqrDistance <= sqrFireRange)
             {
                 Vector3 viewportPos = cachedMainCamera.WorldToViewportPoint(obj.transform.position);
                 float dx = viewportPos.x - 0.5f;
                 float dy = viewportPos.y - 0.5f;
                 float sqrDistFromCenter = dx * dx + dy * dy;
 
-                if (sqrDistFromCenter <= sqrLockCircleRadius)
+                if (sqrDistFromCenter <= sqrLockRadius)
                 {
                     return true;
                 }
@@ -323,11 +322,11 @@ public class TargetLockUI : MonoBehaviour
             }
         }
     }
-    
+
     private void ConnectToAutoTargetLock()
     {
         if (autoTargetLock == null) return;
-        
+
         autoTargetLock.OnTargetLocked -= OnTargetLocked;
         autoTargetLock.OnTargetLost -= OnTargetLost;
         autoTargetLock.OnTargetLocked += OnTargetLocked;
@@ -346,30 +345,30 @@ public class TargetLockUI : MonoBehaviour
     {
         DisconnectFromAutoTargetLock();
     }
-    
+
     private void OnTargetLocked(Transform target)
     {
         UpdateUI(true);
     }
-    
+
     private void OnTargetLost(Transform target)
     {
         UpdateUI(false);
     }
-    
+
     private void UpdateUI(bool targetLocked)
     {
         if (normalUI != null)
         {
             normalUI.SetActive(!targetLocked);
         }
-        
+
         if (machineGunUI != null)
         {
             machineGunUI.SetActive(targetLocked);
         }
     }
-    
+
     private void UpdateMissileUIState(bool missileLocked)
     {
         if (missileLockUI != null)
@@ -377,29 +376,29 @@ public class TargetLockUI : MonoBehaviour
             missileLockUI.SetActive(missileLocked);
         }
     }
-    
+
     public void ForceShowNormal()
     {
         UpdateUI(false);
     }
-    
+
     public void ForceShowTargetLock()
     {
         UpdateUI(true);
     }
-    
+
     public void SetAutoTargetLock(AutoTargetLock targetLock)
     {
         DisconnectFromAutoTargetLock();
-        
+
         autoTargetLock = targetLock;
-        
+
         if (autoTargetLock != null)
         {
             ConnectToAutoTargetLock();
         }
     }
-    
+
     public void SetTargetLockUI(RectTransform uiElement)
     {
         if (uiElement != null)
@@ -427,13 +426,6 @@ public class TargetLockUI : MonoBehaviour
         CachePlayerComponents(player);
         cachedEnemyTargets = null;
         enemyTargetCacheTimer = 0f;
-
-        // Bolt: Optimized - Pre-calculate squared values when player changes
-        if (weaponManager != null)
-            sqrMissileRange = weaponManager.missileFireRange * weaponManager.missileFireRange;
-        if (autoTargetLock != null)
-            sqrLockCircleRadius = autoTargetLock.lockCircleRadius * autoTargetLock.lockCircleRadius;
-
         isInitialized = cachedPlayer != null;
     }
 }

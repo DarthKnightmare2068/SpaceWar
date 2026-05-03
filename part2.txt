@@ -1,0 +1,100 @@
+    }
+
+    private void UpdateWeaponUI()
+    {
+        bool inFireRange = false;
+        if (machineGunUI != null && weaponManager != null)
+        {
+            inFireRange = weaponManager.IsTargetInRange(weaponManager.machineGunFireRange);
+            machineGunUI.SetActive(inFireRange);
+        }
+
+        bool missileInRange = false;
+        if (missileLockUI != null && weaponManager != null)
+        {
+            missileInRange = weaponManager.IsTargetInRange(weaponManager.missileFireRange);
+            missileLockUI.SetActive(missileInRange);
+        }
+
+        if (normalUI != null)
+            normalUI.SetActive(!(inFireRange || missileInRange || isLaserInRange));
+
+        if (weaponManager == null) return;
+
+        // Bolt: Optimized - Removed redundant manual Physics.Raycast and reused inFireRange flag
+        bool targetUIActive = machineGunUI != null && machineGunUI.activeInHierarchy;
+        bool normalUIActive = normalUI != null && normalUI.activeInHierarchy;
+
+        if (inFireRange && !targetUIActive)
+        {
+            UpdateUI(true);
+        }
+        else if (!inFireRange && !normalUIActive)
+        {
+            UpdateUI(false);
+        }
+    }
+
+    private void UpdateMissileUI()
+    {
+        bool missileUIActive = missileLockUI != null && missileLockUI.activeInHierarchy;
+
+        if (missileLaunch != null && !missileLaunch.useAutoTargetLock)
+        {
+            enemyInMissileViewTimer += Time.deltaTime;
+            if (enemyInMissileViewTimer >= ENEMY_IN_MISSILE_VIEW_INTERVAL)
+            {
+                enemyInMissileViewTimer = 0f;
+                cachedEnemyInMissileView = CheckEnemyInMissileView();
+            }
+
+            if (cachedEnemyInMissileView && !missileUIActive)
+            {
+                UpdateMissileUIState(true);
+            }
+            else if (!cachedEnemyInMissileView && missileUIActive)
+            {
+                UpdateMissileUIState(false);
+            }
+        }
+        else
+        {
+            if (autoTargetLock == null) return;
+
+            bool hasTarget = autoTargetLock.HasTarget();
+            bool inMissileRange = false;
+
+            if (hasTarget && autoTargetLock.lockedTarget != null && weaponManager != null)
+            {
+                // Bolt: Optimized - Use sqrMagnitude for range check
+                Vector3 missileFromPos = missileLaunch != null ? missileLaunch.transform.position : transform.position;
+                float sqrMissileDistance = (missileFromPos - autoTargetLock.lockedTarget.position).sqrMagnitude;
+                inMissileRange = sqrMissileDistance <= (weaponManager.missileFireRange * weaponManager.missileFireRange);
+            }
+
+            if (hasTarget && inMissileRange && !missileUIActive)
+            {
+                UpdateMissileUIState(true);
+            }
+            else if ((!hasTarget || !inMissileRange) && missileUIActive)
+            {
+                UpdateMissileUIState(false);
+            }
+        }
+    }
+
+    private void RefreshEnemyTargetCache()
+    {
+        if (autoTargetLock == null || autoTargetLock.targetTags == null) return;
+
+        // Build combined list of all tagged objects
+        System.Collections.Generic.List<GameObject> allTargets = new System.Collections.Generic.List<GameObject>();
+        foreach (string tag in autoTargetLock.targetTags)
+        {
+            GameObject[] candidates = GameObject.FindGameObjectsWithTag(tag);
+            allTargets.AddRange(candidates);
+        }
+        cachedEnemyTargets = allTargets.ToArray();
+    }
+
+    private bool CheckEnemyInMissileView()
