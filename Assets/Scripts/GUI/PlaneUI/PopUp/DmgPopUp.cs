@@ -13,21 +13,18 @@ public class DmgPopUp : MonoBehaviour
 
     private const int POOL_SIZE = 20;
     private const float POPUP_LIFETIME = 1f;
-    private Queue<GameObject> pool = new Queue<GameObject>();
+    private ObjectPool<Transform> pool;
 
     private void Awake()
     {
+        if (current != null && current != this) { Destroy(this); return; }
         current = this;
         cachedCamera = Camera.main;
         cachedCanvas = GetComponentInParent<Canvas>();
 
         // Pre-warm pool to avoid Instantiate on first hits.
-        for (int i = 0; i < POOL_SIZE; i++)
-        {
-            var obj = Instantiate(dmgPopUpPrefab, transform.parent);
-            obj.SetActive(false);
-            pool.Enqueue(obj);
-        }
+        Transform prefabTransform = dmgPopUpPrefab != null ? dmgPopUpPrefab.transform : null;
+        pool = new ObjectPool<Transform>(prefabTransform, POOL_SIZE, transform.parent);
     }
 
     public static void ShowDamage(Vector3 worldPosition, int damage, Color color)
@@ -50,21 +47,12 @@ public class DmgPopUp : MonoBehaviour
 
     private void ShowPopUp(Vector3 position, string text, Color color)
     {
-        GameObject popUp;
-        if (pool.Count > 0)
-        {
-            popUp = pool.Dequeue();
-            popUp.transform.SetParent(transform.parent);
-            popUp.transform.position = position;
-            popUp.transform.rotation = Quaternion.identity;
-            popUp.SetActive(true);
-        }
-        else
-        {
-            popUp = Instantiate(dmgPopUpPrefab, position, Quaternion.identity, transform.parent);
-        }
+        Transform popUp = pool != null ? pool.Get(position, Quaternion.identity) : null;
+        if (popUp == null) return;
+        popUp.SetParent(transform.parent, worldPositionStays: true);
+        popUp.position = position;
 
-        var tmp = popUp.transform.GetChild(0).GetComponent<TextMeshProUGUI>();
+        var tmp = popUp.GetChild(0).GetComponent<TextMeshProUGUI>();
         tmp.text = text;
         tmp.color = color;
 
@@ -78,13 +66,9 @@ public class DmgPopUp : MonoBehaviour
         StartCoroutine(ReturnToPool(popUp, POPUP_LIFETIME));
     }
 
-    private IEnumerator ReturnToPool(GameObject obj, float delay)
+    private IEnumerator ReturnToPool(Transform obj, float delay)
     {
         yield return new WaitForSeconds(delay);
-        if (obj != null)
-        {
-            obj.SetActive(false);
-            pool.Enqueue(obj);
-        }
+        if (obj != null) pool.Release(obj);
     }
 }

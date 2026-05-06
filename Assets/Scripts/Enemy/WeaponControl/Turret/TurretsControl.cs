@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class TurretControl : MonoBehaviour, IHittable, IHasHealth
+public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
 {
     [SerializeField]
     Transform body;
@@ -37,13 +37,13 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth
         cachedDmgControl = GetComponentInParent<WeaponDmgControl>();
         if (cachedDmgControl == null)
         {
-            cachedDmgControl = FindObjectOfType<WeaponDmgControl>();
+            cachedDmgControl = FindAnyObjectByType<WeaponDmgControl>();
         }
-        
+
         cachedManager = GetComponentInParent<TurretsManager>();
         if (cachedManager == null)
         {
-            cachedManager = FindObjectOfType<TurretsManager>();
+            cachedManager = FindAnyObjectByType<TurretsManager>();
         }
 
         if (cachedDmgControl != null)
@@ -80,11 +80,13 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth
             {
                 if (cachedManager != null && cachedManager.turretDestroyedVFX != null)
                 {
-                    var vfx = Instantiate(cachedManager.turretDestroyedVFX, transform.position + Vector3.up * 1f, Quaternion.identity);
-                    float duration = 2f;
-                    var ps = vfx.GetComponent<ParticleSystem>();
-                    if (ps != null) duration = ps.main.duration;
-                    Destroy(vfx, duration);
+                    if (VFXPool.Instance != null)
+                        VFXPool.Instance.Get(cachedManager.turretDestroyedVFX, transform.position + Vector3.up * 1f);
+                    else
+                    {
+                        var vfx = Instantiate(cachedManager.turretDestroyedVFX, transform.position + Vector3.up * 1f, Quaternion.identity);
+                        Destroy(vfx, 2f);
+                    }
                 }
                 cachedDmgControl.OnTurretDestroyed();
             }
@@ -104,6 +106,10 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth
     float IHasHealth.CurrentHP => currentHP;
     float IHasHealth.MaxHP => maxHP;
 
+    // ITargetable
+    public Transform Transform => transform;
+    public bool IsAlive => currentHP > 0 && gameObject.activeInHierarchy;
+
     public void ControlTurret(Transform enemy, float howCloseToEnemy)
     {
         if (!gameObject.activeInHierarchy) return;
@@ -115,9 +121,6 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth
             if(distanceToEnemy < howCloseToEnemy)
             {
                 Quaternion targetRotation = Quaternion.LookRotation(directionToEnemy);
-
-                Vector3 newPosition = new Vector3(joint.position.x, joint.position.y, joint.position.z);
-                joint.position = newPosition;
 
                 Quaternion finalRotation = Quaternion.Euler(targetRotation.eulerAngles.x, targetRotation.eulerAngles.y, 90);
                 if (trackPlayerInstantly)
@@ -158,19 +161,16 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth
             bulletObj.transform.position = spawnPoint.position;
             bulletObj.transform.rotation = Quaternion.LookRotation(gunBarrel.forward);
             
-            BulletDamage bulletDamageComponent = bulletObj.GetComponent<BulletDamage>();
-            if (bulletDamageComponent == null)
+            if (bulletObj.TryGetComponent(out BulletDamage bulletDamageComponent))
             {
-                bulletDamageComponent = bulletObj.AddComponent<BulletDamage>();
+                bulletDamageComponent.Initialize(damage, this);
             }
-
-            bulletDamageComponent.Initialize(damage, this);
 
             Rigidbody bulletRb = bulletObj.GetComponent<Rigidbody>();
             if (bulletRb != null)
             {
                 float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
-                bulletRb.velocity = gunBarrel.forward * speed;
+                bulletRb.linearVelocity = gunBarrel.forward * speed;
             }
         }
 
@@ -202,7 +202,7 @@ public class BulletDamage : MonoBehaviour
             PlaneStats playerStats = other.GetComponent<PlaneStats>();
             if (playerStats != null)
             {
-                playerStats.TakeDamage((int)damage);
+                playerStats.TakeDamage(damage);
             }
             if (BulletPool.Instance != null)
             {

@@ -8,14 +8,23 @@ public class BulletPool : MonoBehaviour
 
     [SerializeField] private GameObject bulletPrefab;
     [SerializeField] private int poolSize = 100;
-    
+
     private Dictionary<string, float> projectileLifetimes = new Dictionary<string, float>();
     private Queue<GameObject> bulletPool = new Queue<GameObject>();
     private int activeBullets = 0;
     public float bulletLifetime = 5f;
 
+    // Timestamp-based expiry sweep replaces a per-bullet StartCoroutine to cut allocations.
+    private struct ActiveBullet
+    {
+        public GameObject bullet;
+        public float expireAt;
+    }
+    private readonly List<ActiveBullet> activeBulletList = new List<ActiveBullet>();
+
     private void Awake()
     {
+        if (Instance != null && Instance != this) { Destroy(this); return; }
         Instance = this;
     }
 
@@ -60,6 +69,8 @@ public class BulletPool : MonoBehaviour
         if (bulletPrefab != null)
         {
             GameObject bullet = Instantiate(bulletPrefab);
+            if (!bullet.TryGetComponent<BulletDamage>(out _))
+                bullet.AddComponent<BulletDamage>();
             bullet.tag = "Bullet";
             bullet.layer = LayerMask.NameToLayer("Bullet");
             bullet.SetActive(false);
@@ -79,55 +90,53 @@ public class BulletPool : MonoBehaviour
                 bullet.tag = "Bullet";
                 bullet.layer = LayerMask.NameToLayer("Bullet");
                 activeBullets++;
-                if (type == "Turret")
-                {
-                    StartCoroutine(DestroyBulletAfterLifetime(bullet, bulletLifetime));
-                }
-                else if (projectileLifetimes.ContainsKey(type))
-                {
-                    StartCoroutine(DestroyBulletAfterLifetime(bullet, projectileLifetimes[type]));
-                }
-                else
-                {
-                    StartCoroutine(DestroyBulletAfterLifetime(bullet, bulletLifetime));
-                }
+                TrackActiveBullet(bullet, GetLifetimeForType(type));
             }
         }
         else if (activeBullets < poolSize)
         {
             bullet = Instantiate(bulletPrefab);
+            if (!bullet.TryGetComponent<BulletDamage>(out _))
+                bullet.AddComponent<BulletDamage>();
             bullet.tag = "Bullet";
             bullet.layer = LayerMask.NameToLayer("Bullet");
             bullet.SetActive(true);
             activeBullets++;
-            if (projectileLifetimes.ContainsKey(type))
-            {
-                StartCoroutine(DestroyBulletAfterLifetime(bullet, projectileLifetimes[type]));
-            }
-            else
-            {
-                StartCoroutine(DestroyBulletAfterLifetime(bullet, bulletLifetime));
-            }
-        }
-        else if (bulletPool.Count > 0)
-        {
-            bullet = bulletPool.Dequeue();
-            if (bullet != null)
-            {
-                bullet.SetActive(true);
-                bullet.tag = "Bullet";
-                bullet.layer = LayerMask.NameToLayer("Bullet");
-                if (projectileLifetimes.ContainsKey(type))
-                {
-                    StartCoroutine(DestroyBulletAfterLifetime(bullet, projectileLifetimes[type]));
-                }
-                else
-                {
-                    StartCoroutine(DestroyBulletAfterLifetime(bullet, bulletLifetime));
-                }
-            }
+            TrackActiveBullet(bullet, GetLifetimeForType(type));
         }
         return bullet;
+    }
+
+    private float GetLifetimeForType(string type)
+    {
+        if (type == "Turret") return bulletLifetime;
+        if (projectileLifetimes.TryGetValue(type, out float lifetime)) return lifetime;
+        return bulletLifetime;
+    }
+
+    private void TrackActiveBullet(GameObject bullet, float lifetime)
+    {
+        activeBulletList.Add(new ActiveBullet { bullet = bullet, expireAt = Time.time + lifetime });
+    }
+
+    void Update()
+    {
+        float now = Time.time;
+        for (int i = activeBulletList.Count - 1; i >= 0; i--)
+        {
+            ActiveBullet entry = activeBulletList[i];
+            if (entry.bullet == null || !entry.bullet.activeInHierarchy)
+            {
+                activeBulletList.RemoveAt(i);
+                continue;
+            }
+            if (now >= entry.expireAt)
+            {
+                activeBulletList.RemoveAt(i);
+                if (entry.bullet.CompareTag("Bullet"))
+                    ReturnBullet(entry.bullet);
+            }
+        }
     }
 
     public void ReturnBullet(GameObject bullet)
@@ -142,7 +151,7 @@ public class BulletPool : MonoBehaviour
             Rigidbody rb = bullet.GetComponent<Rigidbody>();
             if (rb != null)
             {
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
             }
             bullet.SetActive(false);
@@ -158,12 +167,4 @@ public class BulletPool : MonoBehaviour
         }
     }
 
-    private IEnumerator DestroyBulletAfterLifetime(GameObject bullet, float lifetime)
-    {
-        yield return new WaitForSeconds(lifetime);
-        if (bullet != null && bullet.activeInHierarchy && bullet.CompareTag("Bullet"))
-        {
-            ReturnBullet(bullet);
-        }
-    }
 }

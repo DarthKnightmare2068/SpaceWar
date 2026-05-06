@@ -53,6 +53,8 @@ public class AudioSetting : MonoBehaviour
             Instance = this;
             LoadVolumeSettings();
             InitializeAudioPool();
+            // Cleanup of destroyed-player audio dictionaries runs at 1 Hz (not every frame).
+            InvokeRepeating(nameof(SweepDestroyedPlayerAudio), 1f, 1f);
         }
         else
         {
@@ -108,6 +110,7 @@ public class AudioSetting : MonoBehaviour
 
     void Update()
     {
+        // One-shot returns must run every frame so freed sources are immediately available.
         for (int i = activeOneShotSources.Count - 1; i >= 0; i--)
         {
             AudioSource source = activeOneShotSources[i];
@@ -117,7 +120,10 @@ public class AudioSetting : MonoBehaviour
                 activeOneShotSources.RemoveAt(i);
             }
         }
-        
+    }
+
+    private void SweepDestroyedPlayerAudio()
+    {
         CleanupDestroyedPlayerAudio(playerFlightAudio);
         CleanupDestroyedPlayerAudio(playerThrusterAudio);
         CleanupDestroyedPlayerAudio(playerLaserAudio);
@@ -299,6 +305,32 @@ public class AudioSetting : MonoBehaviour
                 source.Stop();
             }
         }
+    }
+
+    // Generic looped-source factory: creates one looping AudioSource per (owner, key) pair and
+    // caches it on the owner GameObject. Replaces the boilerplate previously duplicated across
+    // PlaneControl.InitializeAudioSources and LaserActive.InitializeAudioSource.
+    public AudioSource GetOrCreateLoopedSource(GameObject owner, string key, AudioClip clip, float volume)
+    {
+        if (owner == null) return null;
+
+        string objName = string.IsNullOrEmpty(key) ? "LoopedAudio" : key;
+        Transform existing = owner.transform.Find(objName);
+        AudioSource source = existing != null ? existing.GetComponent<AudioSource>() : null;
+        if (source == null)
+        {
+            GameObject audioObj = existing != null ? existing.gameObject : new GameObject(objName);
+            audioObj.transform.SetParent(owner.transform);
+            audioObj.transform.localPosition = Vector3.zero;
+            source = audioObj.GetComponent<AudioSource>();
+            if (source == null) source = audioObj.AddComponent<AudioSource>();
+            source.loop = true;
+            source.playOnAwake = false;
+            source.spatialBlend = 0f;
+        }
+        source.clip = clip;
+        source.volume = volume;
+        return source;
     }
 
     public AudioSource GetLaserAudioSource(GameObject player)

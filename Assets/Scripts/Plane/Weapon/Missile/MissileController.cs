@@ -49,6 +49,11 @@ public class MissileController : MonoBehaviour
     {
         speed = missileSpeed;
         lifetime = missileLifetime;
+        // Reset per-life state so pooled missile re-use works.
+        hasExploded = false;
+        isInitialized = false;
+        CancelInvoke();
+        Invoke(nameof(SetInitialized), 0.1f);
         PlaneStats playerPlane = null;
         if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
         {
@@ -71,7 +76,7 @@ public class MissileController : MonoBehaviour
         // Simplified - removed duplicate code from both branches
         if (rb != null)
         {
-            rb.velocity = transform.forward * speed;
+            rb.linearVelocity = transform.forward * speed;
         }
         else
         {
@@ -81,8 +86,17 @@ public class MissileController : MonoBehaviour
         float timeAlive = Time.time - startTime;
         if (timeAlive > lifetime)
         {
-            Destroy(gameObject);
+            ReturnToPoolOrDestroy();
         }
+    }
+
+    private void ReturnToPoolOrDestroy()
+    {
+        hasExploded = true;
+        if (PlayerProjectilePool.Instance != null)
+            PlayerProjectilePool.Instance.ReturnMissile(gameObject);
+        else
+            Destroy(gameObject);
     }
 
     private void OnTriggerEnter(Collider other)
@@ -103,61 +117,18 @@ public class MissileController : MonoBehaviour
         }
         else if (other.CompareTag("Enemy"))
         {
-            var enemyStats = other.gameObject.GetComponentInParent<EnemyStats>();
-            var mainBossStats = other.gameObject.GetComponentInParent<MainBossStats>();
-            
-            if (enemyStats != null)
-            {
-                if (!useAutoTargetLock)
-                {
-                    // Use cached references instead of GetComponent on collision
-                    if (cachedPlayerTransform != null && cachedWeaponManager != null)
-                    {
-                        float distance = Vector3.Distance(cachedPlayerTransform.position, other.transform.position);
-                        if (distance <= cachedWeaponManager.missileFireRange)
-                        {
-                            enemyStats.TakeDamage((int)damage);
-                            DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
-                        }
-                    }
-                }
-                else
-                {
-                    // Use cached AutoTargetLock instead of FindObjectOfType
-                    if (cachedAutoTargetLock != null && cachedAutoTargetLock.IsValidTarget(other.transform))
-                    {
-                        enemyStats.TakeDamage((int)damage);
-                        DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
-                    }
-                }
-            }
-            else if (mainBossStats != null)
-            {
-                if (!useAutoTargetLock)
-                {
-                    // Use cached references instead of GetComponent on collision
-                    if (cachedPlayerTransform != null && cachedWeaponManager != null)
-                    {
-                        float distance = Vector3.Distance(cachedPlayerTransform.position, other.transform.position);
-                        if (distance <= cachedWeaponManager.missileFireRange)
-                        {
-                            mainBossStats.TakeDamage((int)damage);
-                            DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
-                        }
-                    }
-                }
-                else
-                {
-                    // Use cached AutoTargetLock instead of FindObjectOfType
-                    if (cachedAutoTargetLock != null && cachedAutoTargetLock.IsValidTarget(other.transform))
-                    {
-                        mainBossStats.TakeDamage((int)damage);
-                        DmgPopUp.ShowDamage(hitPosition, (int)damage, Color.red);
-                    }
-                }
-            }
+            // Range/lock gating still applies before damage — DamageHelper handles the IHittable walk.
+            bool allowed;
+            if (!useAutoTargetLock)
+                allowed = cachedPlayerTransform != null && cachedWeaponManager != null &&
+                          Vector3.Distance(cachedPlayerTransform.position, other.transform.position) <= cachedWeaponManager.missileFireRange;
+            else
+                allowed = cachedAutoTargetLock != null && cachedAutoTargetLock.IsValidTarget(other.transform);
+
+            if (allowed)
+                DamageHelper.TryDealDamage(other, damage, Color.red, hitPosition);
         }
 
-        Destroy(gameObject);
+        ReturnToPoolOrDestroy();
     }
 }

@@ -19,6 +19,7 @@ public class PlaneStats : MonoBehaviour
     [Tooltip("Percentage of max HP regenerated per second")]
     [SerializeField] private float regenerationRate = 0.2f;
     private float lastDamageTime;
+    private float _regenAccumulator = 0f;
 
     [Header("Attack Settings")]
     [Tooltip("Base damage dealt by the plane's attack.")]
@@ -46,14 +47,14 @@ public class PlaneStats : MonoBehaviour
         canTakeDamage = value;
     }
 
-    public void TakeDamage(int amount)
+    public void TakeDamage(float amount)
     {
         if (!canTakeDamage) return;
-        if(amount <= 0 || currentHP <= 0)
+        if (amount <= 0 || currentHP <= 0)
             return;
-        currentHP -= amount;
+        currentHP -= Mathf.RoundToInt(amount);
         lastDamageTime = Time.time;
-        if(currentHP <= 0)
+        if (currentHP <= 0)
         {
             currentHP = 0;
             HandleDeath();
@@ -77,8 +78,17 @@ public class PlaneStats : MonoBehaviour
     {
         if (Time.time - lastDamageTime >= regenerationDelay && currentHP < maxHP)
         {
-            float regenerationAmount = maxHP * regenerationRate * Time.deltaTime;
-            Heal(Mathf.RoundToInt(regenerationAmount));
+            _regenAccumulator += maxHP * regenerationRate * Time.deltaTime;
+            if (_regenAccumulator >= 1f)
+            {
+                int healAmount = Mathf.FloorToInt(_regenAccumulator);
+                _regenAccumulator -= healAmount;
+                Heal(healAmount);
+            }
+        }
+        else
+        {
+            _regenAccumulator = 0f;
         }
     }
 
@@ -100,22 +110,6 @@ public class PlaneStats : MonoBehaviour
     }
 
     void OnTriggerEnter(Collider other)
-    {
-        if (other.gameObject.CompareTag("Enemy") || other.gameObject.CompareTag("Ground") || other.gameObject.CompareTag("Turret"))
-        {
-            TakeDamage(maxHP);
-        }
-    }
-
-    void OnCollisionStay(Collision collision)
-    {
-        if (collision.gameObject.CompareTag("Enemy") || collision.gameObject.CompareTag("Ground") || collision.gameObject.CompareTag("Turret"))
-        {
-            TakeDamage(maxHP);
-        }
-    }
-
-    void OnTriggerStay(Collider other)
     {
         if (other.gameObject.CompareTag("Enemy") || other.gameObject.CompareTag("Ground") || other.gameObject.CompareTag("Turret"))
         {

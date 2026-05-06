@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.VFX;
 
-public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
+public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargetable
 {
     [Header("Cannon Components")]
     [SerializeField] protected Transform body;
@@ -38,7 +38,6 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
     protected bool trackPlayerInstantly;
     protected bool isPlayerInRotationLimit;
     protected float rotationLimitTimer;
-    protected int playerSearchFailCount;
     protected float playerSearchCooldown;
     protected WeaponDmgControl cachedDmgControl;
     protected WeaponHealthBar healthBar;
@@ -49,12 +48,18 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
     protected Quaternion initialJointLocalRotation;
     protected Vector3 initialBodyForward;
 
+    private bool _startCompleted;
     private GameObject activeLaserInstance;
+
+    // Throttled to ~10 Hz so a 10-cannon boss does ~10 raycasts/frame instead of 20.
+    private RaycastHit lastHit;
+    private bool lastHitValid;
+    private float aimRaycastTimer;
+    private const float AIM_RAYCAST_INTERVAL = 0.1f;
 
     private const float TARGET_LOCK_DELAY = 1f;
     private const float ROTATION_LIMIT_DELAY = 2f;
     private const float PLAYER_SEARCH_INTERVAL = 1f;
-    private const int PLAYER_SEARCH_FAIL_LIMIT = 5;
 
     public void SetTrackingMode(bool instant) { trackPlayerInstantly = instant; }
 
@@ -62,7 +67,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
     {
         cachedDmgControl = GetComponentInParent<WeaponDmgControl>();
         if (cachedDmgControl == null)
-            cachedDmgControl = FindObjectOfType<WeaponDmgControl>();
+            cachedDmgControl = FindAnyObjectByType<WeaponDmgControl>();
 
         currentHP = maxHP;
         InitializeStats();
@@ -75,6 +80,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
         initialBodyRotation = body.rotation;
         initialJointLocalRotation = joint.localRotation;
         initialBodyForward = body.forward;
+        _startCompleted = true;
 
         if (laserEndPoint == null)
             laserEndPoint = new GameObject("LaserEndPoint_Generated").transform;
@@ -99,16 +105,25 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
 
             playerSearchCooldown = PLAYER_SEARCH_INTERVAL;
             if (GameEntityRegistry.TryGetPlayerTransform(out Transform playerTransform))
-            {
                 enemy = playerTransform;
-                playerSearchFailCount = 0;
-                enabled = true;
-            }
             else
+                return;
+        }
+
+        // Skip the heavy aiming/raycast work when the target is well outside fire range.
+        // Threshold is fireRange * sqrt(2) (sqr 2x) so cannons re-engage smoothly on approach.
+        if (enemy != null)
+        {
+            float sqrDist = (enemy.position - transform.position).sqrMagnitude;
+            float gate = fireRange * fireRange * 2f;
+            if (gate > 0f && sqrDist > gate)
             {
-                playerSearchFailCount++;
-                if (playerSearchFailCount >= PLAYER_SEARCH_FAIL_LIMIT)
-                    enabled = false;
+                if (isTargetLocked)
+                {
+                    isTargetLocked = false;
+                    StopLaserVFX();
+                }
+                ResetToDefaultRotation();
                 return;
             }
         }
@@ -135,8 +150,10 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
     {
         isTargetLocked = false;
         StopLaserVFX();
-        ResetToDefaultRotation();
-        playerSearchFailCount = 0;
+        // Guard: initialBodyRotation is set in Start; calling ResetToDefaultRotation
+        // before Start runs would Slerp toward Quaternion(0,0,0,0) (invalid, not identity)
+        // and corrupt the rest-rotation that all aim-angle checks are relative to.
+        if (_startCompleted) ResetToDefaultRotation();
         playerSearchCooldown = 0f;
     }
 
@@ -155,14 +172,19 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
     float IHasHealth.CurrentHP => currentHP;
     float IHasHealth.MaxHP => maxHP;
 
+    // ITargetable — auto-target lock uses this single interface call.
+    public Transform Transform => transform;
+    public bool IsAlive => currentHP > 0 && gameObject.activeInHierarchy;
+
     protected void FindPlayerTarget()
     {
         if (enemy != null) return;
 
         if (GameEntityRegistry.TryGetPlayerTransform(out Transform playerTransform))
             enemy = playerTransform;
-        else
-            enabled = false;
+        // Don't disable — Update polls on cooldown until the player registers.
+        // Setting enabled=false here permanently breaks the cannon when canons
+        // spawn before the player (which is always the case at scene start).
     }
 
     protected void PlayLaserVFX(float length)
@@ -195,9 +217,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
         // Only raycast when actually firing — skips the per-frame raycast on every idle canon.
         if (laserVFX == null || enemy == null || !isTargetLocked) return;
         float distance = maxLaserScale;
-        RaycastHit hit;
-        if (Physics.Raycast(gunBarrel.position, gunBarrel.forward, out hit, maxLaserScale, hittableLayers))
-            distance = Vector3.Distance(gunBarrel.position, hit.point);
+        if (lastHitValid)
+            distance = Vector3.Distance(gunBarrel.position, lastHit.point);
         currentLaserScale = distance;
         laserVFX.transform.localScale = new Vector3(currentLaserScale / 2f, currentLaserScale / 2f, currentLaserScale);
     }
@@ -232,8 +253,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
             rotationLimitTimer = 0f;
         }
 
-        float distanceToEnemy = Vector3.Distance(transform.position, enemy.position);
-        if (distanceToEnemy <= fireRange && canAimAtPlayer)
+        float sqrDistToEnemy = (enemy.position - transform.position).sqrMagnitude;
+        if (sqrDistToEnemy <= fireRange * fireRange && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;
@@ -282,23 +303,32 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth
                 laserVFXPrefab.SetActive(false);
             StopLaserVFX();
             laserDamageTimer = 0f;
+            lastHitValid = false;
+            aimRaycastTimer = 0f;
             return;
         }
 
         RotateToTarget();
-        RaycastHit hit;
-        if (Physics.Raycast(gunBarrel.position, gunBarrel.forward, out hit, fireRange, hittableLayers) && hit.transform.CompareTag("Player"))
+
+        aimRaycastTimer -= Time.deltaTime;
+        if (aimRaycastTimer <= 0f)
+        {
+            aimRaycastTimer = AIM_RAYCAST_INTERVAL;
+            lastHitValid = Physics.Raycast(gunBarrel.position, gunBarrel.forward, out lastHit, fireRange, hittableLayers);
+        }
+
+        if (lastHitValid && lastHit.transform != null && lastHit.transform.CompareTag("Player"))
         {
             if (laserEndPoint != null && laserVFX != null)
-                laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(hit.point);
+                laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(lastHit.point);
             if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
                 laserVFXPrefab.SetActive(true);
-            PlayLaserVFX(Vector3.Distance(gunBarrel.position, hit.point));
+            PlayLaserVFX(Vector3.Distance(gunBarrel.position, lastHit.point));
             laserDamageTimer += Time.deltaTime;
             if (laserDamageTimer >= laserDamageInterval)
             {
                 laserDamageTimer = 0f;
-                hit.transform.GetComponent<PlaneStats>()?.TakeDamage((int)damage);
+                lastHit.transform.GetComponent<PlaneStats>()?.TakeDamage(damage);
             }
         }
         else

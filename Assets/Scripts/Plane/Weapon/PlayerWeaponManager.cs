@@ -32,13 +32,19 @@ public class PlayerWeaponManager : MonoBehaviour
     private Vector3 currentTargetPosition;
     private Ray currentTargetRay;
 
+    // Throttled to avoid a per-frame raycast; IsTargetInRange reuses the cached hit.
+    private RaycastHit currentTargetHit;
+    private bool currentTargetHitValid;
+    private float targetRaycastTimer;
+    private const float TARGET_RAYCAST_INTERVAL = 0.1f;
+
     private void Start()
     {
         if (mainCamera == null)
             mainCamera = Camera.main;
         if (targetLockUI == null)
         {
-            var lockUI = FindObjectOfType<TargetLockUI>();
+            var lockUI = FindAnyObjectByType<TargetLockUI>();
             if (lockUI != null)
                 targetLockUI = lockUI.GetComponent<RectTransform>();
         }
@@ -72,16 +78,28 @@ public class PlayerWeaponManager : MonoBehaviour
             viewportPoint = new Vector3(0.5f, 0.5f, 0f);
         }
         currentTargetRay = mainCamera.ViewportPointToRay(viewportPoint);
-        
-        RaycastHit hit;
-        if (Physics.Raycast(currentTargetRay, out hit, machineGunFireRange, targetableLayers))
+
+        targetRaycastTimer -= Time.deltaTime;
+        if (targetRaycastTimer <= 0f)
         {
-            currentTargetPosition = hit.point;
+            targetRaycastTimer = TARGET_RAYCAST_INTERVAL;
+            currentTargetHitValid = Physics.Raycast(currentTargetRay, out currentTargetHit, machineGunFireRange, targetableLayers);
+        }
+
+        if (currentTargetHitValid)
+        {
+            currentTargetPosition = currentTargetHit.point;
         }
         else
         {
             currentTargetPosition = currentTargetRay.origin + currentTargetRay.direction * machineGunFireRange;
         }
+    }
+
+    public bool TryGetCurrentTargetHit(out RaycastHit hit)
+    {
+        hit = currentTargetHit;
+        return currentTargetHitValid;
     }
 
     public bool CanFireBullet() => isInfinite || (currentBullets > 0 && !isReloading);
@@ -109,22 +127,18 @@ public class PlayerWeaponManager : MonoBehaviour
 
     public bool IsTargetInRange(float range)
     {
-        if (targetLockUI == null) 
+        if (targetLockUI == null)
         {
             return false;
         }
-        
-        RaycastHit hit;
-        if (Physics.Raycast(currentTargetRay, out hit, range, targetableLayers))
-        {
-            bool isEnemy = hit.collider.CompareTag("Enemy");
-            bool isTurret = hit.collider.CompareTag("Turret");
-            bool inRange = isEnemy || isTurret;
-            
-            return inRange;
-        }
-        
-        return false;
+
+        if (!currentTargetHitValid) return false;
+        if (currentTargetHit.collider == null) { currentTargetHitValid = false; return false; }
+        if (currentTargetHit.distance > range) return false;
+
+        bool isEnemy = currentTargetHit.collider.CompareTag("Enemy");
+        bool isTurret = currentTargetHit.collider.CompareTag("Turret");
+        return isEnemy || isTurret;
     }
 
     public void SetTargetLockUI(RectTransform uiElement)

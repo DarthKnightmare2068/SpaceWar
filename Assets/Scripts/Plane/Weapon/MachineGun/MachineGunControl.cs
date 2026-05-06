@@ -37,11 +37,7 @@ public class MachineGunControl : MonoBehaviour
             weaponManager = GetComponentInParent<PlayerWeaponManager>();
         }
         
-        playerPlane = GetComponent<PlaneStats>();
-        if (playerPlane == null)
-            playerPlane = GetComponentInParent<PlaneStats>();
-        if (playerPlane == null)
-            GameEntityRegistry.TryGetPlayerComponent(out playerPlane);
+        playerPlane = Resolver.Find<PlaneStats>(this);
         
         InitializeBulletPool();
     }
@@ -152,7 +148,7 @@ public class MachineGunControl : MonoBehaviour
             Rigidbody bulletRb = bullet.GetComponent<Rigidbody>();
             if (bulletRb != null)
             {
-                bulletRb.velocity = direction * bulletSpeed;
+                bulletRb.linearVelocity = direction * bulletSpeed;
                 bullet.layer = LayerMask.NameToLayer("Player");
                 bullet.tag = "PlayerWeapon";
             }

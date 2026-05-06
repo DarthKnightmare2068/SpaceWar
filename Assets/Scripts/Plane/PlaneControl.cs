@@ -4,7 +4,7 @@ using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(AudioSource))]
-public class PlaneControl : MonoBehaviour
+public partial class PlaneControl : MonoBehaviour
 {
     [Header("Flight Settings")]
     public float currentSpeed = 200f;
@@ -56,6 +56,11 @@ public class PlaneControl : MonoBehaviour
 
     private Rigidbody rb;
     private bool isOutsideGround = false;
+    private Collider cachedGroundCollider;
+    private float pendingMouseX = 0f;
+    private float pendingMouseY = 0f;
+    private float lastSpeed = float.NegativeInfinity;
+    private Vector3 lastForward = Vector3.zero;
 
     void Start()
     {
@@ -82,81 +87,11 @@ public class PlaneControl : MonoBehaviour
 
         maxThrusterThreshold = 5;
         currentThrusterThreshold = maxThrusterThreshold;
+
+        if (GameManager.Instance != null && GameManager.Instance.groundPrefab != null)
+            cachedGroundCollider = GameManager.Instance.groundPrefab.GetComponent<Collider>();
     }
 
-    private void InitializeAudioSources()
-    {
-        if (AudioSetting.Instance == null)
-        {
-            return;
-        }
-
-        if (flightAudioSource == null)
-        {
-            GameObject flightAudioObj = new GameObject("FlightAudio");
-            flightAudioObj.transform.SetParent(transform);
-            flightAudioObj.transform.localPosition = Vector3.zero;
-            flightAudioSource = flightAudioObj.AddComponent<AudioSource>();
-            flightAudioSource.loop = true;
-            flightAudioSource.playOnAwake = false;
-            flightAudioSource.spatialBlend = 0f;
-        }
-
-        if (thrusterAudioSource == null)
-        {
-            GameObject thrusterAudioObj = new GameObject("ThrusterAudio");
-            thrusterAudioObj.transform.SetParent(transform);
-            thrusterAudioObj.transform.localPosition = Vector3.zero;
-            thrusterAudioSource = thrusterAudioObj.AddComponent<AudioSource>();
-            thrusterAudioSource.loop = true;
-            thrusterAudioSource.playOnAwake = false;
-            thrusterAudioSource.spatialBlend = 0f;
-        }
-
-        PlayFlightSound();
-    }
-
-    private void PlayFlightSound()
-    {
-        if (AudioSetting.Instance == null || AudioSetting.Instance.normalFlightSound == null) return;
-        if (flightAudioSource == null) return;
-
-        flightAudioSource.clip = AudioSetting.Instance.normalFlightSound;
-        flightAudioSource.volume = AudioSetting.Instance.normalFlightSoundVolume;
-        if (!flightAudioSource.isPlaying)
-        {
-            flightAudioSource.Play();
-        }
-    }
-
-    private void PlayThrusterSound()
-    {
-        if (AudioSetting.Instance == null || AudioSetting.Instance.thrusterSound == null) return;
-        if (thrusterAudioSource == null) return;
-
-        thrusterAudioSource.clip = AudioSetting.Instance.thrusterSound;
-        thrusterAudioSource.volume = AudioSetting.Instance.thrusterSoundVolume;
-        if (!thrusterAudioSource.isPlaying)
-        {
-            thrusterAudioSource.Play();
-        }
-    }
-
-    private void StopThrusterSound()
-    {
-        if (thrusterAudioSource != null && thrusterAudioSource.isPlaying)
-        {
-            thrusterAudioSource.Stop();
-        }
-    }
-
-    void OnDestroy()
-    {
-        if (AudioSetting.Instance != null)
-        {
-            AudioSetting.Instance.CleanupPlayerAudio(gameObject);
-        }
-    }
 
     void Update()
     {
@@ -187,26 +122,20 @@ public class PlaneControl : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (!isFlipping)
+        {
+            Quaternion rotChange = Quaternion.Euler(
+                -pendingMouseY * pitchPower * Time.fixedDeltaTime,
+                 pendingMouseX * yawPower * Time.fixedDeltaTime,
+                 0f);
+            rb.MoveRotation(rb.rotation * rotChange);
+            pendingMouseX = 0f;
+            pendingMouseY = 0f;
+        }
+
         ApplyFlightForces();
     }
 
-    void ManageThrusterEnergy()
-    {
-        if (!isBoosting && currentThrusterThreshold < maxThrusterThreshold)
-        {
-            thrusterConsumptionAccumulator += Time.deltaTime;
-            if (thrusterConsumptionAccumulator >= 1f)
-            {
-                currentThrusterThreshold = Mathf.Min(currentThrusterThreshold + 1, maxThrusterThreshold);
-                thrusterConsumptionAccumulator = 0f;
-            }
-        }
-
-        if (mustRechargeThrusterFull && currentThrusterThreshold == maxThrusterThreshold)
-        {
-            mustRechargeThrusterFull = false;
-        }
-    }
 
     void AirControl()
     {
@@ -238,11 +167,8 @@ public class PlaneControl : MonoBehaviour
                 rollInputTimer = rollInputTimeout;
             }
 
-            Quaternion rotChange = Quaternion.Euler(
-                -mouseY * pitchPower * Time.deltaTime,
-                 mouseX * yawPower * Time.deltaTime,
-                 0f);
-            rb.MoveRotation(rb.rotation * rotChange);
+            pendingMouseX += mouseX;
+            pendingMouseY += mouseY;
 
             if(Input.GetKey(KeyCode.S))
                 currentSpeed = Mathf.Lerp(currentSpeed, 0f, Time.deltaTime * acceleration);
@@ -290,86 +216,17 @@ public class PlaneControl : MonoBehaviour
         else
             rb.AddForce(-Physics.gravity * gravityMultiplier, ForceMode.Acceleration);
 
-        rb.velocity = transform.forward * currentSpeed;
-    }
-
-    void HandleThruster()
-    {
-        if(Input.GetKeyDown(KeyCode.Space) && !mustRechargeThrusterFull && currentThrusterThreshold > 0)
-            StartCoroutine(ThrusterBoost());
-    }
-
-    IEnumerator ThrusterBoost()
-    {
-        if (isBoosting)
-            yield break;
-
-        isBoosting = true;
-        float originalMax = maxSpeedAir;
-        maxSpeedAir = boostTargetSpeed;
-
-        if (flightAudioSource != null)
+        Vector3 forward = transform.forward;
+        bool speedChanged = !Mathf.Approximately(currentSpeed, lastSpeed);
+        bool forwardChanged = (forward - lastForward).sqrMagnitude > 1e-6f;
+        if (speedChanged || forwardChanged)
         {
-            flightAudioSource.Stop();
-        }
-        PlayThrusterSound();
-
-        if (planeEffects != null)
-            foreach (var fx in planeEffects)
-                if (fx != null && !fx.isPlaying)
-                    fx.Play();
-
-        while (currentThrusterThreshold > 0 && !mustRechargeThrusterFull && Input.GetKey(KeyCode.Space))
-        {
-            currentSpeed = Mathf.MoveTowards(currentSpeed, maxSpeedAir, boostAcceleration * Time.deltaTime);
-
-            thrusterConsumptionAccumulator += Time.deltaTime;
-            if (thrusterConsumptionAccumulator >= 1f)
-            {
-                currentThrusterThreshold = Mathf.Max(currentThrusterThreshold - 1, 0);
-                thrusterConsumptionAccumulator = 0f;
-                if (currentThrusterThreshold == 0)
-                {
-                    mustRechargeThrusterFull = true;
-                    break;
-                }
-            }
-            yield return null;
-        }
-
-        maxSpeedAir = originalMax;
-        isBoosting = false;
-        currentSpeed = Mathf.Clamp(currentSpeed, 0f, maxSpeedAir);
-
-        StopThrusterSound();
-        PlayFlightSound();
-
-        if (planeEffects != null)
-            foreach (var fx in planeEffects)
-                if (fx != null && fx.isPlaying)
-                    fx.Stop();
-
-        thrusterConsumptionAccumulator = 0f;
-    }
-
-    void ControlPlaneEffects()
-    {
-        if(planeEffects == null)
-            return;
-
-        if(isBoosting)
-        {
-            foreach(var fx in planeEffects)
-                if(fx != null && !fx.isPlaying)
-                    fx.Play();
-        }
-        else
-        {
-            foreach(var fx in planeEffects)
-                if(fx != null && fx.isPlaying)
-                    fx.Stop();
+            rb.linearVelocity = forward * currentSpeed;
+            lastSpeed = currentSpeed;
+            lastForward = forward;
         }
     }
+
 
     void HandleFlip()
     {
@@ -403,40 +260,28 @@ public class PlaneControl : MonoBehaviour
         }
     }
 
-    private void OnCollisionEnter(Collision collision)
-    {
-        if (collision.gameObject.CompareTag("Ground") || collision.gameObject.CompareTag("Enemy"))
-        {
-            var stats = GetComponent<PlaneStats>();
-            if (stats != null)
-            {
-                stats.TakeDamage(stats.CurrentHP);
-            }
-        }
-    }
-
     void CheckGroundBounds()
     {
-        if (GameManager.Instance != null && GameManager.Instance.groundPrefab != null)
+        if (cachedGroundCollider == null)
         {
-            Collider groundCollider = GameManager.Instance.groundPrefab.GetComponent<Collider>();
-            if (groundCollider != null)
-            {
-                Bounds bounds = groundCollider.bounds;
-                Vector3 pos = transform.position;
-                bool inside =
-                    pos.x >= bounds.min.x && pos.x <= bounds.max.x &&
-                    pos.z >= bounds.min.z && pos.z <= bounds.max.z;
-                if (!inside && !isOutsideGround)
-                {
-                    isOutsideGround = true;
-                    transform.Rotate(0f, 180f, 0f);
-                }
-                else if (inside && isOutsideGround)
-                {
-                    isOutsideGround = false;
-                }
-            }
+            if (GameManager.Instance != null && GameManager.Instance.groundPrefab != null)
+                cachedGroundCollider = GameManager.Instance.groundPrefab.GetComponent<Collider>();
+            if (cachedGroundCollider == null) return;
+        }
+
+        Bounds bounds = cachedGroundCollider.bounds;
+        Vector3 pos = transform.position;
+        bool inside =
+            pos.x >= bounds.min.x && pos.x <= bounds.max.x &&
+            pos.z >= bounds.min.z && pos.z <= bounds.max.z;
+        if (!inside && !isOutsideGround)
+        {
+            isOutsideGround = true;
+            transform.Rotate(0f, 180f, 0f);
+        }
+        else if (inside && isOutsideGround)
+        {
+            isOutsideGround = false;
         }
     }
 }

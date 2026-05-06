@@ -131,7 +131,7 @@ public class HudLiteScript : MonoBehaviour
         else if (aircraft != null && aircraftRB != null)  //Mode RB
         {
             currentPosition = aircraftRB.transform.position;
-            relativeSpeed = aircraftRB.transform.InverseTransformDirection(aircraftRB.velocity);
+            relativeSpeed = aircraftRB.transform.InverseTransformDirection(aircraftRB.linearVelocity);
         }
         else
         {

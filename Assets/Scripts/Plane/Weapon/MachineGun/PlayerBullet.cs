@@ -54,36 +54,14 @@ public class PlayerBullet : MonoBehaviour
 
     private void HandleEnemyCollision(Collision collision)
     {
-        // Use static cached references instead of GetComponent on every collision
         if (cachedPlayer == null || cachedGunControl == null || cachedPlayerStats == null)
         {
             RefreshPlayerCache();
             if (cachedGunControl == null || cachedPlayerStats == null) return;
         }
-        
-        var enemyStats = collision.gameObject.GetComponentInParent<EnemyStats>();
-        var mainBossStats = collision.gameObject.GetComponentInParent<MainBossStats>();
-        
-        if (enemyStats != null)
-        {
-            ApplyDamageToEnemy(enemyStats, cachedGunControl, cachedPlayerStats);
-        }
-        else if (mainBossStats != null)
-        {
-            ApplyDamageToMainBoss(mainBossStats, cachedGunControl, cachedPlayerStats);
-        }
-    }
 
-    private void ApplyDamageToEnemy(EnemyStats enemyStats, MachineGunControl gunControl, PlaneStats playerStats)
-    {
-        float finalDamage = gunControl.damage + playerStats.attackPoint;
-        enemyStats.TakeDamage((int)finalDamage);
-    }
-
-    private void ApplyDamageToMainBoss(MainBossStats mainBossStats, MachineGunControl gunControl, PlaneStats playerStats)
-    {
-        float finalDamage = gunControl.damage + playerStats.attackPoint;
-        mainBossStats.TakeDamage((int)finalDamage);
+        float finalDamage = cachedGunControl.damage + cachedPlayerStats.attackPoint;
+        DamageHelper.TryDealDamageSilent(collision.collider, finalDamage);
     }
 
     private void ReturnToPoolOrDestroy()

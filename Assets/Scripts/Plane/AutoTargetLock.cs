@@ -6,6 +6,7 @@ public class AutoTargetLock : MonoBehaviour
     [Header("Targeting Settings")]
     public Camera targetingCamera;
     public string[] targetTags;
+    // TODO: assign dedicated Enemy layer in Inspector — currently scans Everything
     public LayerMask enemyLayer = -1;
     
     [Header("Lock Circle Settings")]
@@ -38,7 +39,8 @@ public class AutoTargetLock : MonoBehaviour
     private float sqrMissileFireRange;
     private float sqrLockCircleRadius;
 
-    private Collider[] scanBuffer = new Collider[128];
+    private Collider[] scanBuffer = new Collider[256];
+    private const int SCAN_BUFFER_MAX = 1024;
     private bool scanBufferSaturationWarned = false;
 
     void Start()
@@ -133,15 +135,17 @@ public class AutoTargetLock : MonoBehaviour
 
         int count = Physics.OverlapSphereNonAlloc(transform.position, weaponManager.missileFireRange, scanBuffer, mask);
 
-        if (count == scanBuffer.Length)
+        if (count == scanBuffer.Length && scanBuffer.Length < SCAN_BUFFER_MAX)
         {
+            scanBuffer = new Collider[Mathf.Min(scanBuffer.Length * 2, SCAN_BUFFER_MAX)];
+            count = Physics.OverlapSphereNonAlloc(transform.position, weaponManager.missileFireRange, scanBuffer, mask);
             if (!scanBufferSaturationWarned)
             {
-                Debug.LogWarning($"[AutoTargetLock] OverlapSphere scan buffer saturated at {scanBuffer.Length}; doubling and re-scanning. Consider assigning a dedicated Enemy layer to reduce hit count.");
+#if UNITY_EDITOR
+                Debug.LogWarning($"[AutoTargetLock] Scan buffer grew to {scanBuffer.Length}. Assign a dedicated Enemy layer to the Inspector to fix this properly.");
+#endif
                 scanBufferSaturationWarned = true;
             }
-            scanBuffer = new Collider[scanBuffer.Length * 2];
-            count = Physics.OverlapSphereNonAlloc(transform.position, weaponManager.missileFireRange, scanBuffer, mask);
         }
 
         for (int i = 0; i < count; i++)
@@ -208,19 +212,8 @@ public class AutoTargetLock : MonoBehaviour
 
     private Transform GetLockableTarget(Transform enemy)
     {
-        if (enemy.TryGetComponent<EnemyStats>(out var enemyStats) || (enemyStats = enemy.GetComponentInParent<EnemyStats>()) != null)
-            return enemyStats.transform;
-
-        if (enemy.TryGetComponent<TurretControl>(out var turret) || (turret = enemy.GetComponentInParent<TurretControl>()) != null)
-            return turret.transform;
-
-        if (enemy.TryGetComponent<SmallCanonControl>(out var smallCanon) || (smallCanon = enemy.GetComponentInParent<SmallCanonControl>()) != null)
-            return smallCanon.transform;
-
-        if (enemy.TryGetComponent<BigCanon>(out var bigCanon) || (bigCanon = enemy.GetComponentInParent<BigCanon>()) != null)
-            return bigCanon.transform;
-
-        return null;
+        var targetable = enemy.GetComponentInParent<ITargetable>();
+        return targetable != null && targetable.IsAlive ? targetable.Transform : null;
     }
 
     private bool HasLineOfSight(Transform target)

@@ -47,7 +47,7 @@ namespace LuminaryLabs.HologramShieldShader.DemoPrefabs.Helpers
             Rigidbody rb = bullet.GetComponent<Rigidbody>();
             if (rb != null)
             {
-                rb.velocity = firePoint.forward * bulletSpeed;
+                rb.linearVelocity = firePoint.forward * bulletSpeed;
             }
             else
             {

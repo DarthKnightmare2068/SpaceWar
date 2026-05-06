@@ -15,6 +15,7 @@ public class WeaponHealthBar : DualSliderBar
     private int currentHP;
 
     private Camera activeCamera;
+    private Transform activeCameraTransform;
     private Camera cachedMainCamera;
     private Camera[] cachedPlayerCameras;
     private Transform playerTransform;
@@ -25,6 +26,7 @@ public class WeaponHealthBar : DualSliderBar
     private TurretControl turretControl;
     private SmallCanonControl cannonControl;
     private BigCanon bigCanonControl;
+    private IHasHealth healthSource;
 
     private float cameraCheckTimer = 0f;
     private const float CAMERA_CHECK_INTERVAL = 1f;
@@ -61,33 +63,24 @@ public class WeaponHealthBar : DualSliderBar
         cannonControl = GetComponentInParent<SmallCanonControl>() ?? GetComponent<SmallCanonControl>();
         bigCanonControl = GetComponentInParent<BigCanon>() ?? GetComponent<BigCanon>();
 
-        if (turretControl != null)
-            maxHP = turretControl.maxHP;
-        else if (cannonControl != null)
-            maxHP = cannonControl.maxHP;
-        else if (bigCanonControl != null)
-            maxHP = bigCanonControl.maxHP;
+        // Single IHasHealth binding replaces three per-frame type branches.
+        if (turretControl != null) healthSource = turretControl;
+        else if (cannonControl != null) healthSource = cannonControl;
+        else if (bigCanonControl != null) healthSource = bigCanonControl;
 
-        if ((turretControl != null || cannonControl != null || bigCanonControl != null) && maxHP > 0 && canvasGroup != null)
+        if (healthSource != null)
+            maxHP = (int)healthSource.MaxHP;
+
+        if (healthSource != null && maxHP > 0 && canvasGroup != null)
             canvasGroup.alpha = 1f;
     }
 
     void Update()
     {
-        if (turretControl != null)
+        if (healthSource != null)
         {
-            currentHP = turretControl.currentHP;
-            maxHP = turretControl.maxHP;
-        }
-        else if (cannonControl != null)
-        {
-            currentHP = cannonControl.currentHP;
-            maxHP = cannonControl.maxHP;
-        }
-        else if (bigCanonControl != null)
-        {
-            currentHP = bigCanonControl.currentHP;
-            maxHP = bigCanonControl.maxHP;
+            currentHP = (int)healthSource.CurrentHP;
+            maxHP = (int)healthSource.MaxHP;
         }
 
         if (maxHP <= 0) maxHP = 1;
@@ -105,7 +98,7 @@ public class WeaponHealthBar : DualSliderBar
 
         if (playerTransform != null && activeCamera == null)
         {
-            activeCamera = GetActivePlayerCamera(playerTransform);
+            SetActiveCamera(GetActivePlayerCamera(playerTransform));
         }
         else if (playerTransform != null)
         {
@@ -115,7 +108,7 @@ public class WeaponHealthBar : DualSliderBar
                 cameraCheckTimer = 0f;
                 Camera newActiveCam = GetActivePlayerCamera(playerTransform);
                 if (newActiveCam != activeCamera)
-                    activeCamera = newActiveCam;
+                    SetActiveCamera(newActiveCam);
             }
         }
 
@@ -141,12 +134,16 @@ public class WeaponHealthBar : DualSliderBar
 
     void LateUpdate()
     {
-        if (activeCamera != null)
+        if (activeCameraTransform != null)
         {
-            transform.LookAt(
-                transform.position + activeCamera.transform.rotation * Vector3.forward,
-                activeCamera.transform.rotation * Vector3.up);
+            transform.rotation = activeCameraTransform.rotation;
         }
+    }
+
+    private void SetActiveCamera(Camera cam)
+    {
+        activeCamera = cam;
+        activeCameraTransform = cam != null ? cam.transform : null;
     }
 
     private void TryBindPlayerAndCamera()
@@ -159,7 +156,7 @@ public class WeaponHealthBar : DualSliderBar
         else
             SetPlayerTransform(null);
 
-        activeCamera = GetActivePlayerCamera(playerTransform);
+        SetActiveCamera(GetActivePlayerCamera(playerTransform));
     }
 
     private void SetPlayerTransform(Transform newTransform)
@@ -203,6 +200,6 @@ public class WeaponHealthBar : DualSliderBar
     private void HandlePlayerChanged(GameObject player)
     {
         SetPlayerTransform(player != null ? player.transform : null);
-        activeCamera = GetActivePlayerCamera(playerTransform);
+        SetActiveCamera(GetActivePlayerCamera(playerTransform));
     }
 }

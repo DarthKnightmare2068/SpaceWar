@@ -32,11 +32,13 @@ public class BigCanon : CanonBase
     {
         if (explosionVFXPrefab != null)
         {
-            var vfx = Instantiate(explosionVFXPrefab, transform.position, Quaternion.identity);
-            float duration = 2f;
-            var ps = vfx.GetComponent<ParticleSystem>();
-            if (ps != null) duration = ps.main.duration;
-            Destroy(vfx, duration);
+            if (VFXPool.Instance != null)
+                VFXPool.Instance.Get(explosionVFXPrefab, transform.position);
+            else
+            {
+                var vfx = Instantiate(explosionVFXPrefab, transform.position, Quaternion.identity);
+                Destroy(vfx, 2f);
+            }
         }
         cachedDmgControl?.OnBigCanonDestroyed();
         gameObject.SetActive(false);

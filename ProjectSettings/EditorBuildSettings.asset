@@ -12,10 +12,13 @@ EditorBuildSettings:
     path: Assets/Scenes/EnterScene/Enter Scene.unity
     guid: 85e2c0f7431b20f4ba213886726512b9
   - enabled: 1
-    path: Assets/Scenes/Plane Test/Plane Test.unity
+    path: Assets/Scenes/PlaneTest/Plane Test.unity
     guid: 9fc0d4010bbf28b4594072e72b8655ab
   m_configObjects:
+    com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f,
+      type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 7d7d2339ffb3de54896320bbb7d38d1c,
       type: 3}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: af4af7217c1ed4d4c8c2229169d19912,
       type: 2}
+  m_UseUCBPForAssetBundles: 0

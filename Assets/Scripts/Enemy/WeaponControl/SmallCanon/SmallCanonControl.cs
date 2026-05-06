@@ -9,7 +9,7 @@ public class SmallCanonControl : CanonBase
         base.Start();
         cachedManager = GetComponentInParent<SmallCanonManager>();
         if (cachedManager == null)
-            cachedManager = FindObjectOfType<SmallCanonManager>();
+            cachedManager = FindAnyObjectByType<SmallCanonManager>();
     }
 
     protected override void InitializeStats()
@@ -32,11 +32,13 @@ public class SmallCanonControl : CanonBase
     {
         if (cachedManager != null && cachedManager.canonDestroyedVFX != null)
         {
-            var vfx = Instantiate(cachedManager.canonDestroyedVFX, transform.position, Quaternion.identity);
-            float duration = 2f;
-            var ps = vfx.GetComponent<ParticleSystem>();
-            if (ps != null) duration = ps.main.duration;
-            Destroy(vfx, duration);
+            if (VFXPool.Instance != null)
+                VFXPool.Instance.Get(cachedManager.canonDestroyedVFX, transform.position);
+            else
+            {
+                var vfx = Instantiate(cachedManager.canonDestroyedVFX, transform.position, Quaternion.identity);
+                Destroy(vfx, 2f);
+            }
         }
         cachedDmgControl?.OnCanonDestroyed();
         gameObject.SetActive(false);

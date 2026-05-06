@@ -35,7 +35,7 @@ public class SmallCanonManager : MonoBehaviour
         // Use GetComponentInParent first — avoids a scene-wide search.
         WeaponDmgControl dmgControl = GetComponentInParent<WeaponDmgControl>();
         if (dmgControl == null)
-            dmgControl = FindObjectOfType<WeaponDmgControl>();
+            dmgControl = FindAnyObjectByType<WeaponDmgControl>();
 
         howCloseToPlayer = dmgControl != null ? dmgControl.GetSmallCanonFireRange() : 100f;
 

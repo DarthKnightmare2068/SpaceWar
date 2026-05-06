@@ -214,7 +214,7 @@ public class GameManager : MonoBehaviour
     {
         if (!radarsCached)
         {
-            cachedRadars = FindObjectsOfType<Ilumisoft.RadarSystem.Radar>();
+            cachedRadars = FindObjectsByType<Ilumisoft.RadarSystem.Radar>(FindObjectsSortMode.None);
             radarsCached = true;
         }
     }
@@ -382,6 +382,9 @@ public class GameManager : MonoBehaviour
 
     public void OnPlayerDeath(PlaneStats player)
     {
+        // Save stats before the player GameObject is destroyed.
+        levelUpSystem?.SaveProgress();
+
         playerLastKnownPosition = player.transform.position;
         
         if (playerExplosionVFX != null && player != null)
@@ -401,17 +404,32 @@ public class GameManager : MonoBehaviour
         RevivePlayerWithDelay(levelUpSystem != null ? levelUpSystem.CurrentLevel : 1);
     }
 
+    void OnApplicationQuit()
+    {
+        levelUpSystem?.DeleteSaveFile();
+    }
+
     public void SetFPSLock()
     {
         if (targetFPS <= 0)
         {
             Application.targetFrameRate = -1;
             QualitySettings.vSyncCount = 0;
+            return;
+        }
+
+        // When monitor refresh rate matches the target, vsync gives a hard cap.
+        // Otherwise disable vsync and let targetFrameRate soft-limit the frame rate.
+        int screenHz = (int)Screen.currentResolution.refreshRateRatio.value;
+        if (screenHz > 0 && Mathf.Abs(screenHz - targetFPS) <= 2)
+        {
+            QualitySettings.vSyncCount = 1;
+            Application.targetFrameRate = -1;
         }
         else
         {
-            Application.targetFrameRate = targetFPS;
             QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = targetFPS;
         }
     }
 

@@ -54,32 +54,33 @@ public class LaserActive : MonoBehaviour
 
         maxThreshold = 5;
         currentThreshold = maxThreshold;
-        
+
         FindPlayerStats();
         InitializeAudioSource();
+        InitializeLaserVFX();
+    }
+
+    private void InitializeLaserVFX()
+    {
+        // Pre-instantiate once and toggle visibility instead of Instantiate/Destroy each fire cycle.
+        if (laserVFXPrefab != null && activeLaserInstance == null)
+        {
+            activeLaserInstance = Instantiate(laserVFXPrefab, transform.position, transform.rotation, transform);
+            activeVFX = activeLaserInstance.GetComponent<VisualEffect>();
+            activeLaserInstance.SetActive(false);
+        }
     }
 
     private void InitializeAudioSource()
     {
         if (audioSourceInitialized) return;
-        
-        if (laserAudioSource == null)
+
+        if (laserAudioSource == null && AudioSetting.Instance != null)
         {
-            GameObject audioObj = new GameObject("LaserAudio");
-            audioObj.transform.SetParent(transform);
-            audioObj.transform.localPosition = Vector3.zero;
-            laserAudioSource = audioObj.AddComponent<AudioSource>();
-            laserAudioSource.loop = true;
-            laserAudioSource.playOnAwake = false;
-            laserAudioSource.spatialBlend = 0f;
-            
-            if (AudioSetting.Instance != null)
-            {
-                laserAudioSource.clip = AudioSetting.Instance.laserSound;
-                laserAudioSource.volume = AudioSetting.Instance.laserSFXVolume;
-            }
+            laserAudioSource = AudioSetting.Instance.GetOrCreateLoopedSource(
+                gameObject, "LaserAudio", AudioSetting.Instance.laserSound, AudioSetting.Instance.laserSFXVolume);
         }
-        
+
         audioSourceInitialized = true;
     }
 
@@ -141,11 +142,7 @@ public class LaserActive : MonoBehaviour
 
     private void FindPlayerStats()
     {
-        playerPlane = GetComponent<PlaneStats>();
-        if (playerPlane == null)
-            playerPlane = GetComponentInParent<PlaneStats>();
-        if (playerPlane == null)
-            GameEntityRegistry.TryGetPlayerComponent(out playerPlane);
+        playerPlane = Resolver.Find<PlaneStats>(this);
     }
 
     void StartFiring()
@@ -158,11 +155,10 @@ public class LaserActive : MonoBehaviour
         }
 
         isFiring = true;
-        if (laserVFXPrefab != null && activeLaserInstance == null)
-        {
-            activeLaserInstance = Instantiate(laserVFXPrefab, transform.position, transform.rotation, transform);
-            activeVFX = activeLaserInstance.GetComponent<VisualEffect>();
-        }
+        if (activeLaserInstance == null)
+            InitializeLaserVFX();
+        if (activeLaserInstance != null && !activeLaserInstance.activeSelf)
+            activeLaserInstance.SetActive(true);
         if (laserVisualScript != null)
             laserVisualScript.gameObject.SetActive(true);
 
@@ -203,12 +199,8 @@ public class LaserActive : MonoBehaviour
     {
         if (!isFiring) return;
         isFiring = false;
-        if (activeLaserInstance != null)
-        {
-            Destroy(activeLaserInstance);
-            activeLaserInstance = null;
-            activeVFX = null;
-        }
+        if (activeLaserInstance != null && activeLaserInstance.activeSelf)
+            activeLaserInstance.SetActive(false);
         if (laserVisualScript != null)
             laserVisualScript.gameObject.SetActive(false);
         CurrentBeamLength = laserFireRange;
@@ -248,8 +240,13 @@ public class LaserActive : MonoBehaviour
 
             if (explosionVFXPrefab != null)
             {
-                GameObject explosion = Instantiate(explosionVFXPrefab, hit.point, Quaternion.LookRotation(hit.normal));
-                Destroy(explosion, 1f);
+                if (VFXPool.Instance != null)
+                    VFXPool.Instance.Get(explosionVFXPrefab, hit.point, Quaternion.LookRotation(hit.normal), 1f);
+                else
+                {
+                    GameObject explosion = Instantiate(explosionVFXPrefab, hit.point, Quaternion.LookRotation(hit.normal));
+                    Destroy(explosion, 1f);
+                }
             }
         }
 

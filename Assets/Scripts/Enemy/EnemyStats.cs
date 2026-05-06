@@ -3,21 +3,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 
-public class EnemyStats : MonoBehaviour, IHasHealth, IHittable
+public class EnemyStats : HealthBase, ITargetable
 {
-    [Header("Health Settings")]
-    [Tooltip("Maximum hit points of the enemy.")]
-    public float maxHP = 1000f;
-    [SerializeField, Tooltip("Current HP at runtime.")]
-    private float currentHP;
-
-    [Header("Events")]
-    public UnityEvent onDeath;
-
-    [Header("Death VFX")]
-    [Tooltip("Prefab to spawn when the enemy is destroyed.")]
-    public GameObject deathVFX;
-
     [Header("Weapon Control Reference")]
     [Tooltip("Reference to the WeaponDmgControl managing this enemy's weapons.")]
     public WeaponDmgControl weaponDmgControl;
@@ -30,45 +17,53 @@ public class EnemyStats : MonoBehaviour, IHasHealth, IHittable
         currentHP = maxHP;
     }
 
-    public void TakeDamage(float amount)
+    protected override bool CanTakeDamage()
     {
-        if (amount <= 0 || currentHP <= 0) return;
-        if (weaponDmgControl != null && !weaponDmgControl.AllWeaponsInactive) return;
+        // Damage gated until all this enemy's weapons are inactive — prevents nuking
+        // a ship while its turrets/canons can still fight back.
+        return weaponDmgControl == null || weaponDmgControl.AllWeaponsInactive;
+    }
 
-        currentHP -= amount;
-        if (currentHP <= 0) { currentHP = 0; HandleDeath(); }
+    protected override void OnDamageTaken(float amount)
+    {
         forceRespawnTimer = -1f;
     }
 
-    private void HandleDeath()
+    protected override void OnDeath()
     {
-        if (deathVFX != null) { var vfx = Instantiate(deathVFX, transform.position, transform.rotation); Destroy(vfx, 5f); }
-        onDeath?.Invoke();
         Destroy(gameObject);
     }
 
-    public float CurrentHP => currentHP;
-    public float MaxHP => maxHP;
-
     void Update()
     {
-        bool allInactive = weaponDmgControl == null || weaponDmgControl.AllWeaponsInactive;
+        TickForceRespawnTimer(weaponDmgControl, ref forceRespawnTimer, FORCE_RESPAWN_DELAY);
+    }
 
-        if (allInactive && forceRespawnTimer < 0f)
-            forceRespawnTimer = FORCE_RESPAWN_DELAY;
+    // Shared between EnemyStats and MainBossStats — kept as a static helper rather than baked into
+    // HealthBase because PlaneStats (player) has no equivalent revive concept.
+    internal static void TickForceRespawnTimer(WeaponDmgControl dmg, ref float timer, float delay)
+    {
+        bool allInactive = dmg == null || dmg.AllWeaponsInactive;
+
+        if (allInactive && timer < 0f)
+            timer = delay;
         else if (!allInactive)
-            forceRespawnTimer = -1f;
+            timer = -1f;
 
-        if (forceRespawnTimer > 0f)
+        if (timer > 0f)
         {
-            forceRespawnTimer -= Time.deltaTime;
-            if (forceRespawnTimer <= 0f)
+            timer -= Time.deltaTime;
+            if (timer <= 0f)
             {
-                forceRespawnTimer = -1f;
-                weaponDmgControl?.ReviveAllTurrets();
-                weaponDmgControl?.ReviveAllCanons();
-                weaponDmgControl?.ReviveAllBigCanons();
+                timer = -1f;
+                dmg?.ReviveAllTurrets();
+                dmg?.ReviveAllCanons();
+                dmg?.ReviveAllBigCanons();
             }
         }
     }
+
+    // ITargetable
+    public Transform Transform => transform;
+    public bool IsAlive => !IsDead;
 }

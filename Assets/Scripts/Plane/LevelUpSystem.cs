@@ -30,8 +30,10 @@ public class LevelUpSystem : MonoBehaviour
     private float nextEnemyScanTime = 0f;
     private bool hasWeaponLevelUpListener = false;
     private bool hasLaserLevelUpListener = false;
+    private int _damageTrackFrame = 0;
 
-    private const string SAVE_FILE = "/progress.json";
+    private static string SavePath =>
+        System.IO.Path.Combine(Application.dataPath, "Scripts", "Data", "JSON", "save.json");
 
     public int CurrentLevel => currentLevel;
     public float CurrentExp => currentExp;
@@ -97,7 +99,9 @@ public class LevelUpSystem : MonoBehaviour
         }
 
         CleanupTrackedTargets();
-        TrackEnemyDamage();
+        _damageTrackFrame++;
+        if (_damageTrackFrame % 5 == 0)
+            TrackEnemyDamage();
     }
 
     private void Track(IHasHealth target, float hp)
@@ -256,19 +260,28 @@ public class LevelUpSystem : MonoBehaviour
         SaveProgress();
     }
 
-    private void SaveProgress()
+    public void SaveProgress()
     {
-        var data = new SaveData { level = currentLevel, currentExp = currentExp, expToNextLevel = expToNextLevel };
-        File.WriteAllText(Application.persistentDataPath + SAVE_FILE, JsonUtility.ToJson(data));
+        var data = new SaveData
+        {
+            level = currentLevel,
+            currentExp = currentExp,
+            expToNextLevel = expToNextLevel,
+            maxHP = playerPlane != null ? playerPlane.maxHP : 0,
+            attackPoint = playerPlane != null ? playerPlane.attackPoint : 0
+        };
+        string dir = System.IO.Path.GetDirectoryName(SavePath);
+        if (!Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+        File.WriteAllText(SavePath, JsonUtility.ToJson(data));
     }
 
     private void LoadProgress()
     {
-        string path = Application.persistentDataPath + SAVE_FILE;
-        if (!File.Exists(path)) return;
+        if (!File.Exists(SavePath)) return;
         try
         {
-            var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(path));
+            var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
             currentLevel = Mathf.Clamp(data.level, 1, MAX_LEVEL);
             currentExp = data.currentExp;
             expToNextLevel = data.expToNextLevel;
@@ -276,10 +289,33 @@ public class LevelUpSystem : MonoBehaviour
         catch { }
     }
 
+    // Reads the save file and applies stored maxHP/attackPoint to a freshly spawned player.
+    private void ApplySavedStatsToPlayer(PlaneStats stats)
+    {
+        if (stats == null || !File.Exists(SavePath)) return;
+        try
+        {
+            var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
+            if (data.maxHP > 0)
+            {
+                stats.maxHP = data.maxHP;
+                stats.Heal(data.maxHP); // Bring currentHP up to new maxHP
+            }
+            if (data.attackPoint > 0)
+                stats.attackPoint = data.attackPoint;
+        }
+        catch { }
+    }
+
+    public void DeleteSaveFile()
+    {
+        if (File.Exists(SavePath))
+            File.Delete(SavePath);
+    }
+
     public void DeleteSave()
     {
-        string path = Application.persistentDataPath + SAVE_FILE;
-        if (File.Exists(path)) File.Delete(path);
+        DeleteSaveFile();
         currentLevel = 1;
         currentExp = 0f;
         expToNextLevel = 1000f;
@@ -291,6 +327,8 @@ public class LevelUpSystem : MonoBehaviour
     private void HandlePlayerChanged(GameObject player)
     {
         CachePlayerReferences(player);
+        if (playerPlane != null)
+            ApplySavedStatsToPlayer(playerPlane);
         BindLevelUpListenersIfReady();
         FindPlayerAndEnemies();
     }

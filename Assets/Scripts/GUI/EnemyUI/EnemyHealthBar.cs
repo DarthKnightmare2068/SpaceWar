@@ -120,10 +120,5 @@ public class EnemyHealthBar : DualSliderBar
                 lastWasDefeated = true;
             }
         }
-
-        if (!gameObject.activeSelf)
-        {
-            gameObject.SetActive(true);
-        }
     }
 } 

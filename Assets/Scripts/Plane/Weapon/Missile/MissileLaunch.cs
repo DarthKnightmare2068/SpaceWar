@@ -39,13 +39,9 @@ public class MissileLaunch : MonoBehaviour
         }
         
         // Cache references once at Start instead of using FindObjectOfType in Update
-        cachedAutoTargetLock = GetComponent<AutoTargetLock>();
-        if (cachedAutoTargetLock == null)
-            cachedAutoTargetLock = GetComponentInParent<AutoTargetLock>();
-        if (cachedAutoTargetLock == null)
-            GameEntityRegistry.TryGetPlayerComponent(out cachedAutoTargetLock);
+        cachedAutoTargetLock = Resolver.Find<AutoTargetLock>(this);
         
-        cachedTargetLockUI = FindObjectOfType<TargetLockUI>();
+        cachedTargetLockUI = FindAnyObjectByType<TargetLockUI>();
         
         if (BulletPool.Instance != null)
         {
@@ -56,13 +52,28 @@ public class MissileLaunch : MonoBehaviour
         damageAccumulated = 0f;
     }
     
+    private void OnEnable()
+    {
+        GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
+    }
+
+    private void OnDisable()
+    {
+        GameEntityRegistry.PlayerChanged -= HandlePlayerChanged;
+    }
+
+    private void HandlePlayerChanged(GameObject player)
+    {
+        // Invalidate caches; lazy-resolve next time they're needed.
+        cachedAutoTargetLock = null;
+        cachedTargetLockUI = null;
+        RefreshCachedReferencesIfNeeded();
+    }
+
     private void Update()
     {
         if (weaponManager == null) return;
-        
-        // Refresh cached references if they're null (lazy initialization)
-        RefreshCachedReferencesIfNeeded();
-        
+
         if (Input.GetKeyDown(KeyCode.C))
         {
             useAutoTargetLock = !useAutoTargetLock;
@@ -88,30 +99,15 @@ public class MissileLaunch : MonoBehaviour
     
     private void RefreshCachedReferencesIfNeeded()
     {
-        // If cachedAutoTargetLock is null, try to find it
         if (cachedAutoTargetLock == null)
         {
-            // First try on this GameObject and parent
-            cachedAutoTargetLock = GetComponent<AutoTargetLock>();
+            cachedAutoTargetLock = Resolver.Find<AutoTargetLock>(this);
             if (cachedAutoTargetLock == null)
-                cachedAutoTargetLock = GetComponentInParent<AutoTargetLock>();
-            
-            if (cachedAutoTargetLock == null)
-                GameEntityRegistry.TryGetPlayerComponent(out cachedAutoTargetLock);
-            
-            // Last resort: FindObjectOfType (only when cache is null)
-            if (cachedAutoTargetLock == null)
-            {
-                cachedAutoTargetLock = FindObjectOfType<AutoTargetLock>();
-            }
-            
+                cachedAutoTargetLock = FindAnyObjectByType<AutoTargetLock>();
         }
-        
-        // Same for TargetLockUI
+
         if (cachedTargetLockUI == null)
-        {
-            cachedTargetLockUI = FindObjectOfType<TargetLockUI>();
-        }
+            cachedTargetLockUI = FindAnyObjectByType<TargetLockUI>();
     }
     
     public void AddDamagePoints(float damage)
@@ -143,7 +139,7 @@ public class MissileLaunch : MonoBehaviour
         AutoTargetLock autoTargetLock = cachedAutoTargetLock;
         if (autoTargetLock == null)
         {
-            autoTargetLock = FindObjectOfType<AutoTargetLock>();
+            autoTargetLock = FindAnyObjectByType<AutoTargetLock>();
         }
         
         Transform target = null;
@@ -166,9 +162,12 @@ public class MissileLaunch : MonoBehaviour
         {
             if (spawnPoint != null)
             {
-                GameObject missile = Instantiate(missilePrefab, spawnPoint.position, spawnPoint.rotation);
+                GameObject missile = PlayerProjectilePool.Instance != null
+                    ? PlayerProjectilePool.Instance.GetMissile(spawnPoint.position, spawnPoint.rotation, missileLifetime)
+                    : Instantiate(missilePrefab, spawnPoint.position, spawnPoint.rotation);
+                if (missile == null) continue;
                 spawnedCount++;
-                
+
                 MissileAutoLock missileLock = missile.GetComponent<MissileAutoLock>();
                 if (missileLock != null)
                 {
@@ -180,6 +179,7 @@ public class MissileLaunch : MonoBehaviour
                 {
                     missileController.Initialize(missileSpeed, missileLifetime);
                     missileController.SetShooter(this.gameObject);
+                    missileController.useAutoTargetLock = true;
                 }
 
                 missile.layer = LayerMask.NameToLayer("Player");
@@ -212,9 +212,13 @@ public class MissileLaunch : MonoBehaviour
         {
             if (spawnPoint != null)
             {
-                GameObject missile = Instantiate(missilePrefab, spawnPoint.position, Quaternion.LookRotation(guideRay.direction));
+                Quaternion missileRot = Quaternion.LookRotation(guideRay.direction);
+                GameObject missile = PlayerProjectilePool.Instance != null
+                    ? PlayerProjectilePool.Instance.GetMissile(spawnPoint.position, missileRot, missileLifetime)
+                    : Instantiate(missilePrefab, spawnPoint.position, missileRot);
+                if (missile == null) continue;
                 spawnedCount++;
-                
+
                 MissileController missileController = missile.GetComponent<MissileController>();
                 if (missileController != null)
                 {

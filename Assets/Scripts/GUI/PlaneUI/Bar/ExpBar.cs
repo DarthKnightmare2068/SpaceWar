@@ -108,6 +108,6 @@ public class ExpBar : MonoBehaviour
         }
         
         // Only use expensive FindObjectOfType as last resort
-        levelUpSystem = FindObjectOfType<LevelUpSystem>();
+        levelUpSystem = FindAnyObjectByType<LevelUpSystem>();
     }
 }

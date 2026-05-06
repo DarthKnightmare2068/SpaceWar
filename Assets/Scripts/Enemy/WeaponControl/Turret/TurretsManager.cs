@@ -45,13 +45,26 @@ public class TurretsManager : MonoBehaviour
 
     private WeaponDmgControl cachedDmgControl;
 
+    // Reused comparer instance — avoids the closure allocation that Sort(lambda) makes per call.
+    private static readonly TurretByDistanceComparer comparer = new TurretByDistanceComparer();
+    private class TurretByDistanceComparer : IComparer<TurretControl>
+    {
+        public Vector3 PlayerPos;
+        public int Compare(TurretControl a, TurretControl b)
+        {
+            float da = a == null ? float.MaxValue : (a.transform.position - PlayerPos).sqrMagnitude;
+            float db = b == null ? float.MaxValue : (b.transform.position - PlayerPos).sqrMagnitude;
+            return da.CompareTo(db);
+        }
+    }
+
     void Awake()
     {
         turrets = new List<TurretControl>(GetComponentsInChildren<TurretControl>(true));
 
         cachedDmgControl = GetComponentInParent<WeaponDmgControl>();
         if (cachedDmgControl == null)
-            cachedDmgControl = FindObjectOfType<WeaponDmgControl>();
+            cachedDmgControl = FindAnyObjectByType<WeaponDmgControl>();
 
         if (cachedDmgControl != null)
             howCloseToPlayer = cachedDmgControl.GetTurretFireRange();
@@ -103,7 +116,7 @@ public class TurretsManager : MonoBehaviour
         {
             var turret = turrets[i];
             if (turret == null) continue;
-            cachedAssignment.TryGetValue(turret, out Transform target);
+            if (!cachedAssignment.TryGetValue(turret, out Transform target) || target == null) continue;
             turret.ControlTurret(target, howCloseToPlayer);
         }
 
@@ -147,12 +160,8 @@ public class TurretsManager : MonoBehaviour
         {
             if (player == null) continue;
 
-            sortedTurretCache.Sort((a, b) =>
-            {
-                float da = a == null ? float.MaxValue : Vector3.Distance(a.transform.position, player.position);
-                float db = b == null ? float.MaxValue : Vector3.Distance(b.transform.position, player.position);
-                return da.CompareTo(db);
-            });
+            comparer.PlayerPos = player.position;
+            sortedTurretCache.Sort(comparer);
 
             int assigned = 0;
             for (int i = 0; i < sortedTurretCache.Count; i++)

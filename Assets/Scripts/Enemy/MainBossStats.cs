@@ -2,21 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 
-public class MainBossStats : MonoBehaviour, IHasHealth, IHittable
+public class MainBossStats : HealthBase, ITargetable
 {
-    [Header("Health Settings")]
-    [Tooltip("Maximum hit points of the boss.")]
-    public float maxHP = 500000f;
-    [SerializeField, Tooltip("Current HP at runtime.")]
-    private float currentHP;
-
-    [Header("Events")]
-    public UnityEvent onDeath;
-
-    [Header("Death VFX")]
-    [Tooltip("Prefab to spawn when the boss is destroyed.")]
-    public GameObject deathVFX;
-
     [Header("Weapon Control Reference")]
     [Tooltip("Reference to the WeaponDmgControl managing this boss's weapons.")]
     public WeaponDmgControl weaponDmgControl;
@@ -32,65 +19,61 @@ public class MainBossStats : MonoBehaviour, IHasHealth, IHittable
     private int nextSideShipRespawnIndex;
     private bool lastShieldActive = true;
 
+    // Cached so CheckSideShipRespawnByHP() reads a bool instead of iterating every frame.
+    private bool _allSideShipsDestroyed = true;
+
     void Start()
     {
         currentHP = maxHP;
         lastHPThreshold = Mathf.Floor(maxHP / HP_THRESHOLD_STEP) * HP_THRESHOLD_STEP;
+        _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
         UpdateShieldStatus();
         nextSideShipRespawnIndex = 0;
     }
 
     public void TrackSideShip(EnemyStats sideShip)
     {
-        if (sideShip != null) sideShip.onDeath.AddListener(OnSideShipDied);
+        if (sideShip != null)
+        {
+            sideShip.onDeath.AddListener(OnSideShipDied);
+            _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
+        }
     }
 
-    private void OnSideShipDied() => UpdateShieldStatus();
+    private void OnSideShipDied()
+    {
+        _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
+        UpdateShieldStatus();
+    }
 
     void Update()
     {
         CheckWeaponRespawnByHP();
         CheckSideShipRespawnByHP();
 
-        bool allInactive = weaponDmgControl == null || weaponDmgControl.AllWeaponsInactive;
-
-        if (allInactive && forceRespawnTimer < 0f)
-            forceRespawnTimer = FORCE_RESPAWN_DELAY;
-        else if (!allInactive)
-            forceRespawnTimer = -1f;
-
-        if (forceRespawnTimer > 0f)
-        {
-            forceRespawnTimer -= Time.deltaTime;
-            if (forceRespawnTimer <= 0f)
-            {
-                forceRespawnTimer = -1f;
-                weaponDmgControl?.ReviveAllTurrets();
-                weaponDmgControl?.ReviveAllCanons();
-                weaponDmgControl?.ReviveAllBigCanons();
-            }
-        }
+        EnemyStats.TickForceRespawnTimer(weaponDmgControl, ref forceRespawnTimer, FORCE_RESPAWN_DELAY);
     }
 
-    public void TakeDamage(float amount)
+    protected override bool CanTakeDamage()
     {
-        if (amount <= 0 || currentHP <= 0) return;
-        if (!AreAllSideShipsDestroyed()) return;
-        if (weaponDmgControl != null && !weaponDmgControl.AllWeaponsInactive) return;
+        if (!AreAllSideShipsDestroyed()) return false;
+        if (weaponDmgControl != null && !weaponDmgControl.AllWeaponsInactive) return false;
+        return true;
+    }
 
-        currentHP -= amount;
-        if (currentHP <= 0) { currentHP = 0; HandleDeath(); }
+    protected override void OnDamageTaken(float amount)
+    {
         forceRespawnTimer = -1f;
     }
 
-    private void HandleDeath()
+    protected override void OnDeath()
     {
-        if (deathVFX != null) { var vfx = Instantiate(deathVFX, transform.position, transform.rotation); Destroy(vfx, 5f); }
-        onDeath?.Invoke();
         Destroy(gameObject);
     }
 
-    private bool AreAllSideShipsDestroyed()
+    private bool AreAllSideShipsDestroyed() => _allSideShipsDestroyed;
+
+    private bool ComputeAllSideShipsDestroyed()
     {
         if (GameManager.Instance == null) return true;
         foreach (var ship in GameManager.Instance.GetActiveEnemyShips())
@@ -137,6 +120,7 @@ public class MainBossStats : MonoBehaviour, IHasHealth, IHittable
         }
     }
 
-    public float CurrentHP => currentHP;
-    public float MaxHP => maxHP;
+    // ITargetable
+    public Transform Transform => transform;
+    public bool IsAlive => !IsDead;
 }
