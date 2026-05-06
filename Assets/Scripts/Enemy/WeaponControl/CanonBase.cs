@@ -51,6 +51,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     private bool _startCompleted;
     private GameObject activeLaserInstance;
 
+    private float fireRangeSqr;
+    private float fireRangeSqrGate;
+
     // Throttled to ~10 Hz so a 10-cannon boss does ~10 raycasts/frame instead of 20.
     private RaycastHit lastHit;
     private bool lastHitValid;
@@ -71,6 +74,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
 
         currentHP = maxHP;
         InitializeStats();
+        fireRangeSqr = fireRange * fireRange;
+        fireRangeSqrGate = fireRangeSqr * 2f;
         FindPlayerTarget();
         StopLaserVFX();
 
@@ -115,8 +120,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         if (enemy != null)
         {
             float sqrDist = (enemy.position - transform.position).sqrMagnitude;
-            float gate = fireRange * fireRange * 2f;
-            if (gate > 0f && sqrDist > gate)
+            if (fireRangeSqrGate > 0f && sqrDist > fireRangeSqrGate)
             {
                 if (isTargetLocked)
                 {
@@ -218,7 +222,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         if (laserVFX == null || enemy == null || !isTargetLocked) return;
         float distance = maxLaserScale;
         if (lastHitValid)
-            distance = Vector3.Distance(gunBarrel.position, lastHit.point);
+            distance = lastHit.distance;
         currentLaserScale = distance;
         laserVFX.transform.localScale = new Vector3(currentLaserScale / 2f, currentLaserScale / 2f, currentLaserScale);
     }
@@ -254,7 +258,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         }
 
         float sqrDistToEnemy = (enemy.position - transform.position).sqrMagnitude;
-        if (sqrDistToEnemy <= fireRange * fireRange && canAimAtPlayer)
+        if (sqrDistToEnemy <= fireRangeSqr && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;
@@ -323,7 +327,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
                 laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(lastHit.point);
             if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
                 laserVFXPrefab.SetActive(true);
-            PlayLaserVFX(Vector3.Distance(gunBarrel.position, lastHit.point));
+            PlayLaserVFX(lastHit.distance);
             laserDamageTimer += Time.deltaTime;
             if (laserDamageTimer >= laserDamageInterval)
             {
