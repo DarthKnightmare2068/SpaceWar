@@ -30,6 +30,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     protected float damage;
     protected float fireRate;
     protected float fireRange;
+    // Bolt: Optimized - cached squared ranges to avoid per-frame multiplications.
+    protected float fireRangeSqr;
+    protected float fireRangeSqrGate;
     protected float currentLaserScale;
     protected float laserDamageInterval = 1f;
     protected float laserDamageTimer;
@@ -39,6 +42,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     protected bool isPlayerInRotationLimit;
     protected float rotationLimitTimer;
     protected float playerSearchCooldown;
+    // Bolt: Optimized - Reuse squared distance across targeting/range checks.
+    protected float currentSqrDistToEnemy;
     protected WeaponDmgControl cachedDmgControl;
     protected WeaponHealthBar healthBar;
 
@@ -71,6 +76,11 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
 
         currentHP = maxHP;
         InitializeStats();
+
+        // Bolt: Optimized - pre-calculate squared distances.
+        fireRangeSqr = fireRange * fireRange;
+        fireRangeSqrGate = fireRangeSqr * 2f;
+
         FindPlayerTarget();
         StopLaserVFX();
 
@@ -112,11 +122,11 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
 
         // Skip the heavy aiming/raycast work when the target is well outside fire range.
         // Threshold is fireRange * sqrt(2) (sqr 2x) so cannons re-engage smoothly on approach.
+        float sqrDist = 0f;
         if (enemy != null)
         {
-            float sqrDist = (enemy.position - transform.position).sqrMagnitude;
-            float gate = fireRange * fireRange * 2f;
-            if (gate > 0f && sqrDist > gate)
+            sqrDist = (enemy.position - transform.position).sqrMagnitude;
+            if (fireRangeSqrGate > 0f && sqrDist > fireRangeSqrGate)
             {
                 if (isTargetLocked)
                 {
@@ -128,6 +138,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
             }
         }
 
+        currentSqrDistToEnemy = sqrDist;
         HandleTargeting();
         HandleRotationAndFiring();
         UpdateLaserScale();
@@ -217,12 +228,14 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         // Only raycast when actually firing — skips the per-frame raycast on every idle canon.
         if (laserVFX == null || enemy == null || !isTargetLocked) return;
         float distance = maxLaserScale;
+        // Bolt: Optimized - use cached hit distance from throttled raycast to avoid Vector3.Distance
         if (lastHitValid)
-            distance = Vector3.Distance(gunBarrel.position, lastHit.point);
+            distance = lastHit.distance;
         currentLaserScale = distance;
         laserVFX.transform.localScale = new Vector3(currentLaserScale / 2f, currentLaserScale / 2f, currentLaserScale);
     }
 
+    // Bolt: Optimized - Reuse sqrDistToEnemy calculated in Update()
     protected void HandleTargeting()
     {
         if (!gameObject.activeInHierarchy) return;
@@ -253,8 +266,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
             rotationLimitTimer = 0f;
         }
 
-        float sqrDistToEnemy = (enemy.position - transform.position).sqrMagnitude;
-        if (sqrDistToEnemy <= fireRange * fireRange && canAimAtPlayer)
+        if (currentSqrDistToEnemy <= fireRangeSqr && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;
@@ -323,7 +335,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
                 laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(lastHit.point);
             if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
                 laserVFXPrefab.SetActive(true);
-            PlayLaserVFX(Vector3.Distance(gunBarrel.position, lastHit.point));
+            // Bolt: Optimized - use cached hit distance from throttled raycast to avoid Vector3.Distance
+            PlayLaserVFX(lastHit.distance);
             laserDamageTimer += Time.deltaTime;
             if (laserDamageTimer >= laserDamageInterval)
             {
