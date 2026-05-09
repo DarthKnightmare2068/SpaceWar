@@ -23,6 +23,7 @@ public class TurretsManager : MonoBehaviour
     public bool trackPlayerInstantly = false;
 
     private float howCloseToPlayer;
+    private float howCloseToPlayerSqr;
     private List<Transform> players = new List<Transform>();
 
     private Dictionary<TurretControl, Transform> cachedAssignment = new Dictionary<TurretControl, Transform>();
@@ -71,6 +72,8 @@ public class TurretsManager : MonoBehaviour
         else
             howCloseToPlayer = 100f;
 
+        howCloseToPlayerSqr = howCloseToPlayer * howCloseToPlayer;
+
         SetAllTurretsHP();
         maxTurretCount = turrets.Count;
         currentTurretCount = maxTurretCount;
@@ -117,7 +120,7 @@ public class TurretsManager : MonoBehaviour
             var turret = turrets[i];
             if (turret == null) continue;
             if (!cachedAssignment.TryGetValue(turret, out Transform target) || target == null) continue;
-            turret.ControlTurret(target, howCloseToPlayer);
+            turret.ControlTurret(target, howCloseToPlayerSqr);
         }
 
         backupRefreshTimer += Time.deltaTime;
@@ -204,8 +207,8 @@ public class TurretsManager : MonoBehaviour
         var stats = playerTransform.GetComponent<PlaneStats>();
         if (stats != null && stats.CurrentHP <= 0) return;
 
-        float dist = Vector3.Distance(transform.position, playerTransform.position);
-        if (dist < howCloseToPlayer)
+        float sqrDist = (transform.position - playerTransform.position).sqrMagnitude;
+        if (sqrDist < howCloseToPlayerSqr)
             players.Add(playerTransform);
     }
 }
