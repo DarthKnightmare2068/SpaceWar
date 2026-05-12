@@ -23,6 +23,7 @@ public class TurretsManager : MonoBehaviour
     public bool trackPlayerInstantly = false;
 
     private float howCloseToPlayer;
+    private float howCloseToPlayerSqr;
     private List<Transform> players = new List<Transform>();
 
     private Dictionary<TurretControl, Transform> cachedAssignment = new Dictionary<TurretControl, Transform>();
@@ -71,6 +72,9 @@ public class TurretsManager : MonoBehaviour
         else
             howCloseToPlayer = 100f;
 
+        // Bolt: Optimized - Pre-calculate squared fire range
+        howCloseToPlayerSqr = howCloseToPlayer * howCloseToPlayer;
+
         SetAllTurretsHP();
         maxTurretCount = turrets.Count;
         currentTurretCount = maxTurretCount;
@@ -117,7 +121,9 @@ public class TurretsManager : MonoBehaviour
             var turret = turrets[i];
             if (turret == null) continue;
             if (!cachedAssignment.TryGetValue(turret, out Transform target) || target == null) continue;
-            turret.ControlTurret(target, howCloseToPlayer);
+
+            // Bolt: Optimized - Pass squared distance to avoid per-frame sqrt in turret logic
+            turret.ControlTurret(target, howCloseToPlayerSqr);
         }
 
         backupRefreshTimer += Time.deltaTime;
@@ -204,8 +210,9 @@ public class TurretsManager : MonoBehaviour
         var stats = playerTransform.GetComponent<PlaneStats>();
         if (stats != null && stats.CurrentHP <= 0) return;
 
-        float dist = Vector3.Distance(transform.position, playerTransform.position);
-        if (dist < howCloseToPlayer)
+        // Bolt: Optimized - Use sqrMagnitude for range check
+        float sqrDist = (playerTransform.position - transform.position).sqrMagnitude;
+        if (sqrDist < howCloseToPlayerSqr)
             players.Add(playerTransform);
     }
 }

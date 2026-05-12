@@ -110,15 +110,20 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
     public Transform Transform => transform;
     public bool IsAlive => currentHP > 0 && gameObject.activeInHierarchy;
 
-    public void ControlTurret(Transform enemy, float howCloseToEnemy)
+    public void ControlTurret(Transform enemy, float howCloseToEnemySqr)
     {
         if (!gameObject.activeInHierarchy) return;
         if(enemy != null)
         {
-            directionToEnemy = enemy.position - gunBarrel.position;
-            float distanceToEnemy = Vector3.Distance(gunBarrel.position, enemy.position);
+            // Bolt: Optimized - Local position caching
+            Vector3 enemyPos = enemy.position;
+            Vector3 barrelPos = gunBarrel.position;
+            directionToEnemy = enemyPos - barrelPos;
 
-            if(distanceToEnemy < howCloseToEnemy)
+            // Bolt: Optimized - Use squared distance comparison to avoid per-frame sqrt
+            float sqrDistanceToEnemy = directionToEnemy.sqrMagnitude;
+
+            if(sqrDistanceToEnemy < howCloseToEnemySqr)
             {
                 Quaternion targetRotation = Quaternion.LookRotation(directionToEnemy);
 
@@ -134,7 +139,7 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
                     body.rotation = Quaternion.Slerp(body.rotation, Quaternion.Euler(0, targetRotation.eulerAngles.y, 0), maxRotationSpeed * Time.deltaTime);
                 }
 
-                gunBarrel.LookAt(enemy.position);
+                gunBarrel.LookAt(enemyPos);
 
                 if(Time.time >= nextFire)
                 {

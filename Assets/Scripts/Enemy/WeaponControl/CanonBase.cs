@@ -30,6 +30,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     protected float damage;
     protected float fireRate;
     protected float fireRange;
+    protected float fireRangeSqr;
+    protected float fireRangeSqrGate;
     protected float currentLaserScale;
     protected float laserDamageInterval = 1f;
     protected float laserDamageTimer;
@@ -45,6 +47,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     [SerializeField] protected Transform laserEndPoint;
 
     protected Quaternion initialBodyRotation;
+    protected Quaternion invInitialBodyRotation;
     protected Quaternion initialJointLocalRotation;
     protected Vector3 initialBodyForward;
 
@@ -71,6 +74,11 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
 
         currentHP = maxHP;
         InitializeStats();
+
+        // Bolt: Optimized - Pre-calculate squared ranges to avoid per-frame multiplications
+        fireRangeSqr = fireRange * fireRange;
+        fireRangeSqrGate = fireRangeSqr * 2f;
+
         FindPlayerTarget();
         StopLaserVFX();
 
@@ -78,6 +86,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
             laserVFXPrefab.SetActive(false);
 
         initialBodyRotation = body.rotation;
+        invInitialBodyRotation = Quaternion.Inverse(initialBodyRotation);
         initialJointLocalRotation = joint.localRotation;
         initialBodyForward = body.forward;
         _startCompleted = true;
@@ -110,26 +119,26 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
                 return;
         }
 
+        // Bolt: Optimized - Local position caching and reused squared distance calculation
+        Vector3 enemyPos = enemy.position;
+        Vector3 myPos = transform.position;
+        float sqrDist = (enemyPos - myPos).sqrMagnitude;
+
         // Skip the heavy aiming/raycast work when the target is well outside fire range.
         // Threshold is fireRange * sqrt(2) (sqr 2x) so cannons re-engage smoothly on approach.
-        if (enemy != null)
+        if (fireRangeSqrGate > 0f && sqrDist > fireRangeSqrGate)
         {
-            float sqrDist = (enemy.position - transform.position).sqrMagnitude;
-            float gate = fireRange * fireRange * 2f;
-            if (gate > 0f && sqrDist > gate)
+            if (isTargetLocked)
             {
-                if (isTargetLocked)
-                {
-                    isTargetLocked = false;
-                    StopLaserVFX();
-                }
-                ResetToDefaultRotation();
-                return;
+                isTargetLocked = false;
+                StopLaserVFX();
             }
+            ResetToDefaultRotation();
+            return;
         }
 
-        HandleTargeting();
-        HandleRotationAndFiring();
+        HandleTargeting(enemyPos, myPos, sqrDist);
+        HandleRotationAndFiring(enemyPos);
         UpdateLaserScale();
 
         if (!isTargetLocked)
@@ -187,7 +196,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         // spawn before the player (which is always the case at scene start).
     }
 
-    protected void PlayLaserVFX(float length)
+    protected void PlayLaserVFX()
     {
         if (!gameObject.activeInHierarchy) return;
         if (laserVFX != null)
@@ -216,25 +225,18 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     {
         // Only raycast when actually firing — skips the per-frame raycast on every idle canon.
         if (laserVFX == null || enemy == null || !isTargetLocked) return;
-        float distance = maxLaserScale;
-        if (lastHitValid)
-            distance = Vector3.Distance(gunBarrel.position, lastHit.point);
+
+        // Bolt: Optimized - Use RaycastHit.distance directly instead of re-calculating Vector3.Distance
+        float distance = lastHitValid ? lastHit.distance : maxLaserScale;
         currentLaserScale = distance;
-        laserVFX.transform.localScale = new Vector3(currentLaserScale / 2f, currentLaserScale / 2f, currentLaserScale);
+        laserVFX.transform.localScale = new Vector3(currentLaserScale * 0.5f, currentLaserScale * 0.5f, currentLaserScale);
     }
 
-    protected void HandleTargeting()
+    protected void HandleTargeting(Vector3 enemyPos, Vector3 myPos, float sqrDistToEnemy)
     {
         if (!gameObject.activeInHierarchy) return;
-        if (enemy == null)
-        {
-            isTargetLocked = false;
-            isPlayerInRotationLimit = false;
-            rotationLimitTimer = 0f;
-            return;
-        }
 
-        bool canAimAtPlayer = CheckIfCanAimAtPlayer();
+        bool canAimAtPlayer = CheckIfCanAimAtPlayer(enemyPos);
 
         if (!canAimAtPlayer && !isPlayerInRotationLimit)
         {
@@ -253,8 +255,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
             rotationLimitTimer = 0f;
         }
 
-        float sqrDistToEnemy = (enemy.position - transform.position).sqrMagnitude;
-        if (sqrDistToEnemy <= fireRange * fireRange && canAimAtPlayer)
+        if (sqrDistToEnemy <= fireRangeSqr && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;
@@ -267,20 +268,19 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         }
     }
 
-    protected bool CheckIfCanAimAtPlayer()
+    protected bool CheckIfCanAimAtPlayer(Vector3 enemyPos)
     {
-        if (enemy == null) return false;
-
-        Vector3 targetDirection = enemy.position - body.position;
+        Vector3 targetDirection = enemyPos - body.position;
         targetDirection.y = 0;
         if (targetDirection == Vector3.zero) return false;
 
+        // Bolt: Optimized - Use cached inverse rotation
         Quaternion targetBodyRotation = Quaternion.LookRotation(targetDirection, Vector3.up);
-        float bodyAngle = (Quaternion.Inverse(initialBodyRotation) * targetBodyRotation).eulerAngles.y;
+        float bodyAngle = (invInitialBodyRotation * targetBodyRotation).eulerAngles.y;
         if (bodyAngle > 180f) bodyAngle -= 360f;
         if (Mathf.Abs(bodyAngle) > maxBodyRotationAngle) return false;
 
-        Vector3 worldDirToTarget = enemy.position - joint.position;
+        Vector3 worldDirToTarget = enemyPos - joint.position;
         if (worldDirToTarget == Vector3.zero) return false;
 
         Quaternion targetLocalRotation = Quaternion.Inverse(body.rotation) * Quaternion.LookRotation(worldDirToTarget, body.up);
@@ -293,11 +293,11 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         return true;
     }
 
-    protected void HandleRotationAndFiring()
+    protected void HandleRotationAndFiring(Vector3 enemyPos)
     {
         if (!gameObject.activeInHierarchy) return;
 
-        if (!isTargetLocked || enemy == null)
+        if (!isTargetLocked)
         {
             if (laserVFXPrefab != null && laserVFXPrefab.activeSelf)
                 laserVFXPrefab.SetActive(false);
@@ -308,7 +308,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
             return;
         }
 
-        RotateToTarget();
+        RotateToTarget(enemyPos);
 
         aimRaycastTimer -= Time.deltaTime;
         if (aimRaycastTimer <= 0f)
@@ -323,7 +323,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
                 laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(lastHit.point);
             if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
                 laserVFXPrefab.SetActive(true);
-            PlayLaserVFX(Vector3.Distance(gunBarrel.position, lastHit.point));
+
+            // Bolt: Optimized - Removed unused distance parameter and its calculation
+            PlayLaserVFX();
             laserDamageTimer += Time.deltaTime;
             if (laserDamageTimer >= laserDamageInterval)
             {
@@ -340,22 +342,21 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         }
     }
 
-    protected void RotateToTarget()
+    protected void RotateToTarget(Vector3 enemyPos)
     {
-        if (enemy == null) return;
-
-        Vector3 targetDir = enemy.position - body.position;
+        Vector3 targetDir = enemyPos - body.position;
         targetDir.y = 0;
         if (targetDir != Vector3.zero)
         {
-            float angle = (Quaternion.Inverse(initialBodyRotation) * Quaternion.LookRotation(targetDir, Vector3.up)).eulerAngles.y;
+            // Bolt: Optimized - Use cached inverse rotation
+            float angle = (invInitialBodyRotation * Quaternion.LookRotation(targetDir, Vector3.up)).eulerAngles.y;
             if (angle > 180f) angle -= 360f;
             angle = Mathf.Clamp(angle, -maxBodyRotationAngle, maxBodyRotationAngle);
             Quaternion target = initialBodyRotation * Quaternion.Euler(0, angle, 0);
             body.rotation = trackPlayerInstantly ? target : Quaternion.Slerp(body.rotation, target, maxRotationSpeed * Time.deltaTime);
         }
 
-        Vector3 worldDir = enemy.position - joint.position;
+        Vector3 worldDir = enemyPos - joint.position;
         if (worldDir != Vector3.zero)
         {
             Quaternion localRot = Quaternion.Inverse(body.rotation) * Quaternion.LookRotation(worldDir, body.up);
