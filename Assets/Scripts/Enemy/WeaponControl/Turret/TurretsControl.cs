@@ -161,16 +161,34 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
             bulletObj.transform.position = spawnPoint.position;
             bulletObj.transform.rotation = Quaternion.LookRotation(gunBarrel.forward);
             
-            if (bulletObj.TryGetComponent(out BulletDamage bulletDamageComponent))
+            // Bolt: Optimized - Use PooledBullet cached components to avoid per-shot GetComponent/TryGetComponent calls
+            if (bulletObj.TryGetComponent(out PooledBullet pooled))
             {
-                bulletDamageComponent.Initialize(damage, this);
-            }
+                if (pooled.damage != null)
+                {
+                    pooled.damage.Initialize(damage, this);
+                }
 
-            Rigidbody bulletRb = bulletObj.GetComponent<Rigidbody>();
-            if (bulletRb != null)
+                if (pooled.rb != null)
+                {
+                    float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
+                    pooled.rb.linearVelocity = gunBarrel.forward * speed;
+                }
+            }
+            else
             {
-                float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
-                bulletRb.linearVelocity = gunBarrel.forward * speed;
+                // Fallback for safety, though BulletPool should always add PooledBullet now
+                if (bulletObj.TryGetComponent(out BulletDamage bulletDamageComponent))
+                {
+                    bulletDamageComponent.Initialize(damage, this);
+                }
+
+                Rigidbody bulletRb = bulletObj.GetComponent<Rigidbody>();
+                if (bulletRb != null)
+                {
+                    float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
+                    bulletRb.linearVelocity = gunBarrel.forward * speed;
+                }
             }
         }
 

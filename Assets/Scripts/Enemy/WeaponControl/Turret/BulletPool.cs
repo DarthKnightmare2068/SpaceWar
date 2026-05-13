@@ -71,6 +71,11 @@ public class BulletPool : MonoBehaviour
             GameObject bullet = Instantiate(bulletPrefab);
             if (!bullet.TryGetComponent<BulletDamage>(out _))
                 bullet.AddComponent<BulletDamage>();
+
+            // Bolt: Optimized - Add PooledBullet to cache components during instantiation
+            var pooled = bullet.AddComponent<PooledBullet>();
+            pooled.CacheComponents();
+
             bullet.tag = "Bullet";
             bullet.layer = LayerMask.NameToLayer("Bullet");
             bullet.SetActive(false);
@@ -98,6 +103,11 @@ public class BulletPool : MonoBehaviour
             bullet = Instantiate(bulletPrefab);
             if (!bullet.TryGetComponent<BulletDamage>(out _))
                 bullet.AddComponent<BulletDamage>();
+
+            // Bolt: Optimized - Add PooledBullet to cache components during instantiation
+            var pooled = bullet.AddComponent<PooledBullet>();
+            pooled.CacheComponents();
+
             bullet.tag = "Bullet";
             bullet.layer = LayerMask.NameToLayer("Bullet");
             bullet.SetActive(true);
@@ -148,12 +158,26 @@ public class BulletPool : MonoBehaviour
             {
                 trail.Clear();
             }
-            Rigidbody rb = bullet.GetComponent<Rigidbody>();
-            if (rb != null)
+
+            // Bolt: Optimized - Use cached Rigidbody from PooledBullet if available
+            if (bullet.TryGetComponent(out PooledBullet pooled))
             {
-                rb.linearVelocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
+                if (pooled.rb != null)
+                {
+                    pooled.rb.linearVelocity = Vector3.zero;
+                    pooled.rb.angularVelocity = Vector3.zero;
+                }
             }
+            else
+            {
+                Rigidbody rb = bullet.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
+            }
+
             bullet.SetActive(false);
             if (bulletPool.Count < poolSize)
             {
@@ -167,4 +191,16 @@ public class BulletPool : MonoBehaviour
         }
     }
 
+}
+
+public class PooledBullet : MonoBehaviour
+{
+    public Rigidbody rb;
+    public BulletDamage damage;
+
+    public void CacheComponents()
+    {
+        if (rb == null) rb = GetComponent<Rigidbody>();
+        if (damage == null) damage = GetComponent<BulletDamage>();
+    }
 }
