@@ -31,6 +31,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     protected float fireRate;
     protected float fireRange;
     protected float currentLaserScale;
+    protected float fireRangeSqr;
+    protected float fireRangeGateSqr;
+    protected float currentSqrDistToEnemy;
     protected float laserDamageInterval = 1f;
     protected float laserDamageTimer;
     protected bool isTargetLocked;
@@ -45,6 +48,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     [SerializeField] protected Transform laserEndPoint;
 
     protected Quaternion initialBodyRotation;
+    protected Quaternion invInitialBodyRotation;
     protected Quaternion initialJointLocalRotation;
     protected Vector3 initialBodyForward;
 
@@ -71,6 +75,11 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
 
         currentHP = maxHP;
         InitializeStats();
+
+        // Bolt: Optimized range caching
+        fireRangeSqr = fireRange * fireRange;
+        fireRangeGateSqr = fireRangeSqr * 2f;
+
         FindPlayerTarget();
         StopLaserVFX();
 
@@ -78,6 +87,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
             laserVFXPrefab.SetActive(false);
 
         initialBodyRotation = body.rotation;
+        // Bolt: Optimized inverse rotation caching
+        invInitialBodyRotation = Quaternion.Inverse(initialBodyRotation);
         initialJointLocalRotation = joint.localRotation;
         initialBodyForward = body.forward;
         _startCompleted = true;
@@ -114,9 +125,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         // Threshold is fireRange * sqrt(2) (sqr 2x) so cannons re-engage smoothly on approach.
         if (enemy != null)
         {
-            float sqrDist = (enemy.position - transform.position).sqrMagnitude;
-            float gate = fireRange * fireRange * 2f;
-            if (gate > 0f && sqrDist > gate)
+            // Bolt: Optimized per-frame distance caching
+            currentSqrDistToEnemy = (enemy.position - transform.position).sqrMagnitude;
+            if (fireRangeGateSqr > 0f && currentSqrDistToEnemy > fireRangeGateSqr)
             {
                 if (isTargetLocked)
                 {
@@ -187,7 +198,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         // spawn before the player (which is always the case at scene start).
     }
 
-    protected void PlayLaserVFX(float length)
+    // Bolt: Optimized unused length parameter removal
+    protected void PlayLaserVFX()
     {
         if (!gameObject.activeInHierarchy) return;
         if (laserVFX != null)
@@ -218,9 +230,11 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         if (laserVFX == null || enemy == null || !isTargetLocked) return;
         float distance = maxLaserScale;
         if (lastHitValid)
-            distance = Vector3.Distance(gunBarrel.position, lastHit.point);
+            // Bolt: Optimized to use RaycastHit.distance
+            distance = lastHit.distance;
         currentLaserScale = distance;
-        laserVFX.transform.localScale = new Vector3(currentLaserScale / 2f, currentLaserScale / 2f, currentLaserScale);
+        // Bolt: Optimized with multiplication
+        laserVFX.transform.localScale = new Vector3(currentLaserScale * 0.5f, currentLaserScale * 0.5f, currentLaserScale);
     }
 
     protected void HandleTargeting()
@@ -253,8 +267,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
             rotationLimitTimer = 0f;
         }
 
-        float sqrDistToEnemy = (enemy.position - transform.position).sqrMagnitude;
-        if (sqrDistToEnemy <= fireRange * fireRange && canAimAtPlayer)
+        // Bolt: Optimized to use cached sqr distance
+        if (currentSqrDistToEnemy <= fireRangeSqr && canAimAtPlayer)
         {
             isTargetLocked = true;
             targetLockTimer = 0f;
@@ -276,7 +290,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         if (targetDirection == Vector3.zero) return false;
 
         Quaternion targetBodyRotation = Quaternion.LookRotation(targetDirection, Vector3.up);
-        float bodyAngle = (Quaternion.Inverse(initialBodyRotation) * targetBodyRotation).eulerAngles.y;
+        // Bolt: Optimized to use cached inverse rotation
+        float bodyAngle = (invInitialBodyRotation * targetBodyRotation).eulerAngles.y;
         if (bodyAngle > 180f) bodyAngle -= 360f;
         if (Mathf.Abs(bodyAngle) > maxBodyRotationAngle) return false;
 
@@ -323,7 +338,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
                 laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(lastHit.point);
             if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
                 laserVFXPrefab.SetActive(true);
-            PlayLaserVFX(Vector3.Distance(gunBarrel.position, lastHit.point));
+            // Bolt: Optimized call site
+            PlayLaserVFX();
             laserDamageTimer += Time.deltaTime;
             if (laserDamageTimer >= laserDamageInterval)
             {
@@ -348,7 +364,8 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         targetDir.y = 0;
         if (targetDir != Vector3.zero)
         {
-            float angle = (Quaternion.Inverse(initialBodyRotation) * Quaternion.LookRotation(targetDir, Vector3.up)).eulerAngles.y;
+            // Bolt: Optimized to use cached inverse rotation
+            float angle = (invInitialBodyRotation * Quaternion.LookRotation(targetDir, Vector3.up)).eulerAngles.y;
             if (angle > 180f) angle -= 360f;
             angle = Mathf.Clamp(angle, -maxBodyRotationAngle, maxBodyRotationAngle);
             Quaternion target = initialBodyRotation * Quaternion.Euler(0, angle, 0);
