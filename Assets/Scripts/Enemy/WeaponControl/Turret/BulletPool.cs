@@ -69,8 +69,16 @@ public class BulletPool : MonoBehaviour
         if (bulletPrefab != null)
         {
             GameObject bullet = Instantiate(bulletPrefab);
-            if (!bullet.TryGetComponent<BulletDamage>(out _))
-                bullet.AddComponent<BulletDamage>();
+
+            // Bolt: Optimized component caching
+            var pooled = bullet.AddComponent<PooledBullet>();
+            pooled.bulletDamage = bullet.GetComponent<BulletDamage>();
+            if (pooled.bulletDamage == null)
+                pooled.bulletDamage = bullet.AddComponent<BulletDamage>();
+
+            pooled.rb = bullet.GetComponent<Rigidbody>();
+            pooled.trail = bullet.GetComponent<TrailRenderer>();
+
             bullet.tag = "Bullet";
             bullet.layer = LayerMask.NameToLayer("Bullet");
             bullet.SetActive(false);
@@ -87,8 +95,7 @@ public class BulletPool : MonoBehaviour
             if (bullet != null)
             {
                 bullet.SetActive(true);
-                bullet.tag = "Bullet";
-                bullet.layer = LayerMask.NameToLayer("Bullet");
+                // Bolt: Redundant tag/layer assignment removed (set in CreateNewBullet)
                 activeBullets++;
                 TrackActiveBullet(bullet, GetLifetimeForType(type));
             }
@@ -96,8 +103,16 @@ public class BulletPool : MonoBehaviour
         else if (activeBullets < poolSize)
         {
             bullet = Instantiate(bulletPrefab);
-            if (!bullet.TryGetComponent<BulletDamage>(out _))
-                bullet.AddComponent<BulletDamage>();
+
+            // Bolt: Optimized component caching
+            var pooled = bullet.AddComponent<PooledBullet>();
+            pooled.bulletDamage = bullet.GetComponent<BulletDamage>();
+            if (pooled.bulletDamage == null)
+                pooled.bulletDamage = bullet.AddComponent<BulletDamage>();
+
+            pooled.rb = bullet.GetComponent<Rigidbody>();
+            pooled.trail = bullet.GetComponent<TrailRenderer>();
+
             bullet.tag = "Bullet";
             bullet.layer = LayerMask.NameToLayer("Bullet");
             bullet.SetActive(true);
@@ -143,17 +158,32 @@ public class BulletPool : MonoBehaviour
     {
         if (bullet != null && bullet.CompareTag("Bullet"))
         {
-            TrailRenderer trail = bullet.GetComponent<TrailRenderer>();
-            if (trail != null)
+            // Bolt: Optimized with cached PooledBullet component
+            if (bullet.TryGetComponent(out PooledBullet pooled))
             {
-                trail.Clear();
+                if (pooled.trail != null)
+                {
+                    pooled.trail.Clear();
+                }
+                if (pooled.rb != null)
+                {
+                    pooled.rb.linearVelocity = Vector3.zero;
+                    pooled.rb.angularVelocity = Vector3.zero;
+                }
             }
-            Rigidbody rb = bullet.GetComponent<Rigidbody>();
-            if (rb != null)
+            else
             {
-                rb.linearVelocity = Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
+                // Fallback for non-pooled bullets
+                TrailRenderer trail = bullet.GetComponent<TrailRenderer>();
+                if (trail != null) trail.Clear();
+                Rigidbody rb = bullet.GetComponent<Rigidbody>();
+                if (rb != null)
+                {
+                    rb.linearVelocity = Vector3.zero;
+                    rb.angularVelocity = Vector3.zero;
+                }
             }
+
             bullet.SetActive(false);
             if (bulletPool.Count < poolSize)
             {
@@ -166,5 +196,12 @@ public class BulletPool : MonoBehaviour
             activeBullets--;
         }
     }
+}
 
+// Bolt: Optimized component cache for pooled bullets
+public class PooledBullet : MonoBehaviour
+{
+    public Rigidbody rb;
+    public TrailRenderer trail;
+    public BulletDamage bulletDamage;
 }

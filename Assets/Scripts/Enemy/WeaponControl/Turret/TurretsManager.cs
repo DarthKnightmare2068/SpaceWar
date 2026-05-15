@@ -23,9 +23,9 @@ public class TurretsManager : MonoBehaviour
     public bool trackPlayerInstantly = false;
 
     private float howCloseToPlayer;
+    private float howCloseToPlayerSqr;
     private List<Transform> players = new List<Transform>();
 
-    private Dictionary<TurretControl, Transform> cachedAssignment = new Dictionary<TurretControl, Transform>();
     private List<TurretControl> sortedTurretCache = new List<TurretControl>();
     private HashSet<TurretControl> reusableAssignedSet = new HashSet<TurretControl>();
 
@@ -71,6 +71,9 @@ public class TurretsManager : MonoBehaviour
         else
             howCloseToPlayer = 100f;
 
+        // Bolt: Optimized squared distance caching
+        howCloseToPlayerSqr = howCloseToPlayer * howCloseToPlayer;
+
         SetAllTurretsHP();
         maxTurretCount = turrets.Count;
         currentTurretCount = maxTurretCount;
@@ -115,9 +118,11 @@ public class TurretsManager : MonoBehaviour
         for (int i = 0; i < turrets.Count; i++)
         {
             var turret = turrets[i];
-            if (turret == null) continue;
-            if (!cachedAssignment.TryGetValue(turret, out Transform target) || target == null) continue;
-            turret.ControlTurret(target, howCloseToPlayer);
+            if (turret != null && turret.CurrentTarget != null)
+            {
+                // Bolt: Optimized using pre-calculated sqr distance and avoiding dictionary lookups
+                turret.ControlTurret(howCloseToPlayerSqr);
+            }
         }
 
         backupRefreshTimer += Time.deltaTime;
@@ -146,7 +151,12 @@ public class TurretsManager : MonoBehaviour
 
     private void RefreshAssignment()
     {
-        cachedAssignment.Clear();
+        // Bolt: Clear old assignments
+        foreach (var t in turrets)
+        {
+            if (t != null) t.CurrentTarget = null;
+        }
+
         reusableAssignedSet.Clear();
 
         if (sortedCacheDirty)
@@ -168,7 +178,8 @@ public class TurretsManager : MonoBehaviour
             {
                 var turret = sortedTurretCache[i];
                 if (turret == null || reusableAssignedSet.Contains(turret)) continue;
-                cachedAssignment[turret] = player;
+                // Bolt: Direct assignment to turret
+                turret.CurrentTarget = player;
                 reusableAssignedSet.Add(turret);
                 assigned++;
                 if (assigned >= maxTurretsPerPlayer) break;
@@ -204,8 +215,9 @@ public class TurretsManager : MonoBehaviour
         var stats = playerTransform.GetComponent<PlaneStats>();
         if (stats != null && stats.CurrentHP <= 0) return;
 
-        float dist = Vector3.Distance(transform.position, playerTransform.position);
-        if (dist < howCloseToPlayer)
+        // Bolt: Optimized with sqrMagnitude
+        float sqrDist = (transform.position - playerTransform.position).sqrMagnitude;
+        if (sqrDist < howCloseToPlayerSqr)
             players.Add(playerTransform);
     }
 }
