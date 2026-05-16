@@ -32,6 +32,8 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
     private WeaponDmgControl cachedDmgControl;
     private TurretsManager cachedManager;
 
+    public Transform CurrentTarget { get; set; }
+
     private void Awake()
     {
         cachedDmgControl = GetComponentInParent<WeaponDmgControl>();
@@ -110,15 +112,16 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
     public Transform Transform => transform;
     public bool IsAlive => currentHP > 0 && gameObject.activeInHierarchy;
 
-    public void ControlTurret(Transform enemy, float howCloseToEnemy)
+    public void ControlTurret(float howCloseToEnemySqr)
     {
         if (!gameObject.activeInHierarchy) return;
-        if(enemy != null)
+        if (CurrentTarget != null)
         {
-            directionToEnemy = enemy.position - gunBarrel.position;
-            float distanceToEnemy = Vector3.Distance(gunBarrel.position, enemy.position);
+            directionToEnemy = CurrentTarget.position - gunBarrel.position;
+            // Bolt: Optimized using sqrMagnitude
+            float sqrDistanceToEnemy = directionToEnemy.sqrMagnitude;
 
-            if(distanceToEnemy < howCloseToEnemy)
+            if (sqrDistanceToEnemy < howCloseToEnemySqr)
             {
                 Quaternion targetRotation = Quaternion.LookRotation(directionToEnemy);
 
@@ -134,9 +137,9 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
                     body.rotation = Quaternion.Slerp(body.rotation, Quaternion.Euler(0, targetRotation.eulerAngles.y, 0), maxRotationSpeed * Time.deltaTime);
                 }
 
-                gunBarrel.LookAt(enemy.position);
+                gunBarrel.LookAt(CurrentTarget.position);
 
-                if(Time.time >= nextFire)
+                if (Time.time >= nextFire)
                 {
                     nextFire = Time.time + fireRate;
                     Shoot();
@@ -148,29 +151,45 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
     void Shoot()
     {
         if (!gameObject.activeInHierarchy) return;
-        if(turretSpawnPoints.Count == 0)
+        if (turretSpawnPoints.Count == 0)
             return;
 
         Transform spawnPoint = turretSpawnPoints[spawnIndex];
 
         GameObject bulletObj = BulletPool.Instance.GetBullet("Turret");
 
-        if(bulletObj != null)
+        if (bulletObj != null)
         {
-            bulletObj.tag = "Bullet";
+            // Bolt: Redundant tag assignment removed (set in pool)
             bulletObj.transform.position = spawnPoint.position;
             bulletObj.transform.rotation = Quaternion.LookRotation(gunBarrel.forward);
-            
-            if (bulletObj.TryGetComponent(out BulletDamage bulletDamageComponent))
-            {
-                bulletDamageComponent.Initialize(damage, this);
-            }
 
-            Rigidbody bulletRb = bulletObj.GetComponent<Rigidbody>();
-            if (bulletRb != null)
+            // Bolt: Optimized with PooledBullet component
+            if (bulletObj.TryGetComponent(out PooledBullet pooled))
             {
-                float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
-                bulletRb.linearVelocity = gunBarrel.forward * speed;
+                if (pooled.bulletDamage != null)
+                {
+                    pooled.bulletDamage.Initialize(damage, this);
+                }
+                if (pooled.rb != null)
+                {
+                    float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
+                    pooled.rb.linearVelocity = gunBarrel.forward * speed;
+                }
+            }
+            else
+            {
+                // Fallback for non-pooled bullets
+                if (bulletObj.TryGetComponent(out BulletDamage bulletDamageComponent))
+                {
+                    bulletDamageComponent.Initialize(damage, this);
+                }
+                Rigidbody bulletRb = bulletObj.GetComponent<Rigidbody>();
+                if (bulletRb != null)
+                {
+                    float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
+                    bulletRb.linearVelocity = gunBarrel.forward * speed;
+                }
             }
         }
 
