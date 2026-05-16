@@ -126,6 +126,13 @@ public partial class TargetLockUI
         CachePlayerComponents(player);
         cachedEnemyTargets = null;
         enemyTargetCacheTimer = 0f;
+
+        // Bolt: Optimized - Pre-calculate squared distance thresholds to eliminate redundant multiplications in Update loops
+        if (weaponManager != null)
+            sqrMissileFireRange = weaponManager.missileFireRange * weaponManager.missileFireRange;
+        if (autoTargetLock != null)
+            sqrLockCircleRadius = autoTargetLock.lockCircleRadius * autoTargetLock.lockCircleRadius;
+
         isInitialized = cachedPlayer != null;
     }
 }

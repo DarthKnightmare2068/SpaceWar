@@ -54,6 +54,9 @@ public partial class TargetLockUI : MonoBehaviour
     private bool cachedMgInRange = false;
     private bool cachedLaserHitInRange = false;
 
+    private float sqrMissileFireRange;
+    private float sqrLockCircleRadius;
+
     // Last-applied SetActive state — skip the call when nothing changed.
     private bool lastMachineGunUIActive;
     private bool lastMissileLockUIActive;
@@ -175,8 +178,9 @@ public partial class TargetLockUI : MonoBehaviour
             if (hasTarget && autoTargetLock.lockedTarget != null && weaponManager != null)
             {
                 Vector3 missileFromPos = missileLaunch != null ? missileLaunch.transform.position : transform.position;
-                float missileDistance = Vector3.Distance(missileFromPos, autoTargetLock.lockedTarget.position);
-                inMissileRange = missileDistance <= weaponManager.missileFireRange;
+                // Bolt: Optimized - replaced Vector3.Distance with sqrMagnitude to save a square root calculation
+                float missileSqrDistance = (autoTargetLock.lockedTarget.position - missileFromPos).sqrMagnitude;
+                inMissileRange = missileSqrDistance <= sqrMissileFireRange;
             }
             
             if (hasTarget && inMissileRange && !missileUIActive)
@@ -227,12 +231,16 @@ public partial class TargetLockUI : MonoBehaviour
         foreach (GameObject obj in cachedEnemyTargets)
         {
             if (obj == null || !obj.activeInHierarchy) continue;
-            float distance = Vector3.Distance(missileLaunch.transform.position, obj.transform.position);
-            if (distance <= weaponManager.missileFireRange)
+            // Bolt: Optimized - replaced Vector3.Distance with sqrMagnitude
+            float sqrDist = (obj.transform.position - missileLaunch.transform.position).sqrMagnitude;
+            if (sqrDist <= sqrMissileFireRange)
             {
                 Vector3 viewportPos = cachedMainCamera.WorldToViewportPoint(obj.transform.position);
-                float distFromCenter = Vector2.Distance(new Vector2(viewportPos.x, viewportPos.y), new Vector2(0.5f, 0.5f));
-                if (distFromCenter <= autoTargetLock.lockCircleRadius)
+                // Bolt: Optimized - manual sqrDist calculation instead of Vector2.Distance to avoid sqrt
+                float dx = viewportPos.x - 0.5f;
+                float dy = viewportPos.y - 0.5f;
+                float sqrDistFromCenter = dx * dx + dy * dy;
+                if (sqrDistFromCenter <= sqrLockCircleRadius)
                 {
                     return true;
                 }
