@@ -96,19 +96,55 @@ public class AutoTargetLock : MonoBehaviour
         
         if (lockedTarget != null)
         {
-            if (!IsTargetValid(lockedTarget))
+            // Bolt: Optimized validation loop to perform checks in increasing order of cost
+            // and avoid multiple WorldToViewportPoint calls for the same target in one frame.
+            bool stillValid = true;
+            if (!lockedTarget.gameObject.activeInHierarchy)
             {
-                LoseTarget();
+                stillValid = false;
             }
             else
             {
-                distanceToTarget = Vector3.Distance(transform.position, lockedTarget.position);
-                isTargetInLockCircle = IsInLockCircle(lockedTarget);
-                
-                if (!isTargetInLockCircle)
+                Vector3 targetPos = lockedTarget.position;
+                Vector3 myPos = transform.position;
+                float sqrDist = (targetPos - myPos).sqrMagnitude;
+
+                if (sqrDist > sqrMissileFireRange)
                 {
-                    LoseTarget();
+                    stillValid = false;
                 }
+                else
+                {
+                    Vector3 viewportPos = targetingCamera.WorldToViewportPoint(targetPos);
+                    if (viewportPos.z <= 0)
+                    {
+                        stillValid = false;
+                    }
+                    else
+                    {
+                        float dx = viewportPos.x - 0.5f;
+                        float dy = viewportPos.y - 0.5f;
+                        isTargetInLockCircle = (dx * dx + dy * dy) <= sqrLockCircleRadius;
+
+                        if (!isTargetInLockCircle)
+                        {
+                            stillValid = false;
+                        }
+                        else if (requireLineOfSight && !HasLineOfSight(lockedTarget))
+                        {
+                            stillValid = false;
+                        }
+                        else
+                        {
+                            distanceToTarget = Mathf.Sqrt(sqrDist);
+                        }
+                    }
+                }
+            }
+
+            if (!stillValid)
+            {
+                LoseTarget();
             }
         }
         
@@ -184,7 +220,12 @@ public class AutoTargetLock : MonoBehaviour
 
         foreach (Transform enemy in enemiesInRange)
         {
+            // Bolt: Optimized reordering - perform cheaper distance and active checks
+            // before expensive viewport projection and line-of-sight raycasts.
             if (enemy == null || !enemy.gameObject.activeInHierarchy) continue;
+
+            float sqrDistance = (enemy.position - transform.position).sqrMagnitude;
+            if (sqrDistance > sqrMissileFireRange || sqrDistance >= bestSqrDistance) continue;
 
             if (!IsInLockCircle(enemy)) continue;
 
@@ -192,14 +233,10 @@ public class AutoTargetLock : MonoBehaviour
 
             if (lockTarget != null)
             {
-                float sqrDistance = (lockTarget.position - transform.position).sqrMagnitude;
-                if (sqrDistance <= sqrMissileFireRange && sqrDistance < bestSqrDistance)
+                if (!requireLineOfSight || HasLineOfSight(lockTarget))
                 {
-                    if (!requireLineOfSight || HasLineOfSight(lockTarget))
-                    {
-                        bestTarget = lockTarget;
-                        bestSqrDistance = sqrDistance;
-                    }
+                    bestTarget = lockTarget;
+                    bestSqrDistance = sqrDistance;
                 }
             }
         }
@@ -245,6 +282,7 @@ public class AutoTargetLock : MonoBehaviour
         return "Unknown";
     }
     
+    // Bolt: Optimized validation method with reordered checks
     bool IsTargetValid(Transform target)
     {
         if (target == null) return false;

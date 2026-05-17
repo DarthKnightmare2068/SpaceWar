@@ -134,22 +134,4 @@ public partial class PlaneControl
         thrusterConsumptionAccumulator = 0f;
     }
 
-    private void ControlPlaneEffects()
-    {
-        if (planeEffects == null)
-            return;
-
-        if (isBoosting)
-        {
-            foreach (var fx in planeEffects)
-                if (fx != null && !fx.isPlaying)
-                    fx.Play();
-        }
-        else
-        {
-            foreach (var fx in planeEffects)
-                if (fx != null && fx.isPlaying)
-                    fx.Stop();
-        }
-    }
 }
