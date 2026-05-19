@@ -57,6 +57,7 @@ public partial class PlaneControl : MonoBehaviour
     private Rigidbody rb;
     private bool isOutsideGround = false;
     private Collider cachedGroundCollider;
+    private Bounds cachedGroundBounds;
     private float pendingMouseX = 0f;
     private float pendingMouseY = 0f;
     private float lastSpeed = float.NegativeInfinity;
@@ -89,7 +90,14 @@ public partial class PlaneControl : MonoBehaviour
         currentThrusterThreshold = maxThrusterThreshold;
 
         if (GameManager.Instance != null && GameManager.Instance.groundPrefab != null)
+        {
             cachedGroundCollider = GameManager.Instance.groundPrefab.GetComponent<Collider>();
+            if (cachedGroundCollider != null)
+            {
+                // Bolt: Optimized - cache bounds to avoid native-to-managed call in Update
+                cachedGroundBounds = cachedGroundCollider.bounds;
+            }
+        }
     }
 
 
@@ -99,7 +107,7 @@ public partial class PlaneControl : MonoBehaviour
         {
             AirControl();
             HandleThruster();
-            ControlPlaneEffects();
+            // Bolt: Optimized - removed redundant ControlPlaneEffects call as the ThrusterBoost coroutine manages these effects
             HandleAutoBalance();
 
             if (planeCamera != null)
@@ -204,7 +212,8 @@ public partial class PlaneControl : MonoBehaviour
     void ApplyFlightForces()
     {
         float speedFactor = Mathf.Clamp(currentSpeed * 0.02f, 0f, 0.5f);
-        float pitchAngle = Vector3.Dot(transform.forward, Vector3.up);
+        // Bolt: Optimized - replaced Vector3.Dot(transform.forward, Vector3.up) with transform.forward.y
+        float pitchAngle = transform.forward.y;
 
         if(pitchAngle > -0.2f && currentSpeed > 15f)
             rb.AddForce(transform.up * liftPower * speedFactor, ForceMode.Acceleration);
@@ -265,11 +274,16 @@ public partial class PlaneControl : MonoBehaviour
         if (cachedGroundCollider == null)
         {
             if (GameManager.Instance != null && GameManager.Instance.groundPrefab != null)
+            {
                 cachedGroundCollider = GameManager.Instance.groundPrefab.GetComponent<Collider>();
+                if (cachedGroundCollider != null)
+                    cachedGroundBounds = cachedGroundCollider.bounds;
+            }
             if (cachedGroundCollider == null) return;
         }
 
-        Bounds bounds = cachedGroundCollider.bounds;
+        // Bolt: Optimized - use cached bounds to avoid expensive native property access every frame
+        Bounds bounds = cachedGroundBounds;
         Vector3 pos = transform.position;
         bool inside =
             pos.x >= bounds.min.x && pos.x <= bounds.max.x &&
