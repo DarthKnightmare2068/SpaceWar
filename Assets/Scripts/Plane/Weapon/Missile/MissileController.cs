@@ -120,10 +120,16 @@ public class MissileController : MonoBehaviour
             // Range/lock gating still applies before damage — DamageHelper handles the IHittable walk.
             bool allowed;
             if (!useAutoTargetLock)
+            {
+                // Bolt: Optimized - use sqrMagnitude for distance check
+                float sqrFireRange = cachedWeaponManager != null ? cachedWeaponManager.missileFireRange * cachedWeaponManager.missileFireRange : 0f;
                 allowed = cachedPlayerTransform != null && cachedWeaponManager != null &&
-                          Vector3.Distance(cachedPlayerTransform.position, other.transform.position) <= cachedWeaponManager.missileFireRange;
+                          (cachedPlayerTransform.position - other.transform.position).sqrMagnitude <= sqrFireRange;
+            }
             else
+            {
                 allowed = cachedAutoTargetLock != null && cachedAutoTargetLock.IsValidTarget(other.transform);
+            }
 
             if (allowed)
                 DamageHelper.TryDealDamage(other, damage, Color.red, hitPosition);

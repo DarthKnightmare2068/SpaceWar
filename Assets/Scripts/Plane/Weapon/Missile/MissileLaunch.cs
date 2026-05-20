@@ -146,8 +146,8 @@ public class MissileLaunch : MonoBehaviour
         if (autoTargetLock != null && autoTargetLock.HasTarget())
         {
             target = autoTargetLock.GetLockedTarget();
-            float distanceToTarget = Vector3.Distance(transform.position, target.position);
-            if (distanceToTarget > weaponManager.missileFireRange)
+            // Bolt: Optimized - reuse cached distance from AutoTargetLock
+            if (autoTargetLock.distanceToTarget > weaponManager.missileFireRange)
             {
                 return;
             }

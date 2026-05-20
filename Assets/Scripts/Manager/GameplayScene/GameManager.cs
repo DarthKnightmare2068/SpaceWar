@@ -234,10 +234,11 @@ public class GameManager : MonoBehaviour
             foreach (var ship in activeEnemyShips)
             {
                 if (ship == null) continue;
-                float dist = Vector3.Distance(ship.transform.position, playerLastKnownPosition);
-                if (dist < minDistance)
+                // Bolt: Optimized - replaced Vector3.Distance with sqrMagnitude
+                float distSqr = (ship.transform.position - playerLastKnownPosition).sqrMagnitude;
+                if (distSqr < minDistance)
                 {
-                    minDistance = dist;
+                    minDistance = distSqr;
                     closestShip = ship;
                 }
             }
@@ -272,18 +273,28 @@ public class GameManager : MonoBehaviour
         int tries = 0;
         bool insideEnemy = true;
         float minSafeDistance = 150f;
+        float minSafeDistanceSqr = minSafeDistance * minSafeDistance;
         
-        // Cache colliders to avoid repeated GetComponent calls
-        List<Collider> enemyColliders = new List<Collider>();
+        // Bolt: Optimized - cache colliders and bounds to avoid repeated native property access and GetComponent calls
+        struct ColliderInfo
+        {
+            public Collider col;
+            public Bounds bounds;
+            public Transform transform;
+        }
+        List<ColliderInfo> enemyColliderInfos = new List<ColliderInfo>();
         foreach (var ship in activeEnemyShips)
         {
             if (ship != null)
             {
                 Collider col = ship.GetComponentInChildren<Collider>();
-                if (col != null) enemyColliders.Add(col);
+                if (col != null) enemyColliderInfos.Add(new ColliderInfo { col = col, bounds = col.bounds, transform = col.transform });
             }
         }
+
         Collider bossCol = (currentBoss != null) ? currentBoss.GetComponentInChildren<Collider>() : null;
+        Bounds bossBounds = bossCol != null ? bossCol.bounds : default;
+        Transform bossTransform = bossCol != null ? bossCol.transform : null;
         
         do
         {
@@ -296,12 +307,12 @@ public class GameManager : MonoBehaviour
 
             insideEnemy = false;
             
-            // Use cached colliders instead of GetComponentInChildren
-            foreach (var col in enemyColliders)
+            // Bolt: Optimized - use cached bounds and sqrMagnitude for faster collision/proximity checks
+            foreach (var info in enemyColliderInfos)
             {
-                if (col != null && col.gameObject.activeInHierarchy)
+                if (info.col != null && info.col.gameObject.activeInHierarchy)
                 {
-                    if (col.bounds.Contains(respawnPos) || Vector3.Distance(respawnPos, col.transform.position) < minSafeDistance)
+                    if (info.bounds.Contains(respawnPos) || (respawnPos - info.transform.position).sqrMagnitude < minSafeDistanceSqr)
                     {
                         insideEnemy = true;
                         break;
@@ -311,7 +322,7 @@ public class GameManager : MonoBehaviour
             
             if (!insideEnemy && bossCol != null && bossCol.gameObject.activeInHierarchy)
             {
-                if (bossCol.bounds.Contains(respawnPos) || Vector3.Distance(respawnPos, currentBoss.transform.position) < minSafeDistance)
+                if (bossBounds.Contains(respawnPos) || (respawnPos - bossTransform.position).sqrMagnitude < minSafeDistanceSqr)
                 {
                     insideEnemy = true;
                 }
