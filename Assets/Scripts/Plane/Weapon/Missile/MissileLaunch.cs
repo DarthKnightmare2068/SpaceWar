@@ -181,9 +181,7 @@ public class MissileLaunch : MonoBehaviour
                     missileController.SetShooter(this.gameObject);
                     missileController.useAutoTargetLock = true;
                 }
-
-                missile.layer = LayerMask.NameToLayer("Player");
-                missile.tag = "PlayerWeapon";
+                // Bolt: Tag and Layer are pre-set in PlayerProjectilePool.CreatePooledMissile()
             }
             else
             {
@@ -226,8 +224,7 @@ public class MissileLaunch : MonoBehaviour
                     missileController.SetShooter(this.gameObject);
                     missileController.useAutoTargetLock = false;
                 }
-                missile.layer = LayerMask.NameToLayer("Player");
-                missile.tag = "PlayerWeapon";
+                // Bolt: Tag and Layer are pre-set in PlayerProjectilePool.CreatePooledMissile()
             }
         }
         

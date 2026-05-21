@@ -145,13 +145,20 @@ public class MachineGunControl : MonoBehaviour
         
         if (bullet != null)
         {
-            Rigidbody bulletRb = bullet.GetComponent<Rigidbody>();
-            if (bulletRb != null)
+            // Bolt: Optimized - use cached component from PooledProjectile if available
+            if (bullet.TryGetComponent<PooledProjectile>(out var pooled) && pooled.Rb != null)
             {
-                bulletRb.linearVelocity = direction * bulletSpeed;
-                bullet.layer = LayerMask.NameToLayer("Player");
-                bullet.tag = "PlayerWeapon";
+                pooled.Rb.linearVelocity = direction * bulletSpeed;
             }
+            else
+            {
+                Rigidbody bulletRb = bullet.GetComponent<Rigidbody>();
+                if (bulletRb != null)
+                {
+                    bulletRb.linearVelocity = direction * bulletSpeed;
+                }
+            }
+            // Bolt: Tag and Layer are pre-set in PlayerProjectilePool.CreatePooledBullet()
         }
     }
 }
