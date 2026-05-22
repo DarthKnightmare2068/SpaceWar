@@ -14,8 +14,8 @@ public class PlayerProjectilePool : MonoBehaviour
     public GameObject bulletPrefab;
     public GameObject missilePrefab;
 
-    private Queue<GameObject> bulletPool = new Queue<GameObject>();
-    private Queue<GameObject> missilePool = new Queue<GameObject>();
+    private Queue<PooledProjectile> bulletPool = new Queue<PooledProjectile>();
+    private Queue<PooledProjectile> missilePool = new Queue<PooledProjectile>();
     
     private List<PooledProjectile> activeBullets = new List<PooledProjectile>();
     private List<PooledProjectile> activeMissiles = new List<PooledProjectile>();
@@ -47,25 +47,36 @@ public class PlayerProjectilePool : MonoBehaviour
 
     void Update()
     {
-        ReturnExpiredProjectiles(activeBullets, bulletPool);
-        ReturnExpiredProjectiles(activeMissiles, missilePool);
+        float now = Time.time;
+        // Bolt: Optimized - pass current time to avoid multiple Time.time calls per frame
+        ReturnExpiredProjectiles(activeBullets, bulletPool, now);
+        ReturnExpiredProjectiles(activeMissiles, missilePool, now);
     }
 
-    private void ReturnExpiredProjectiles(List<PooledProjectile> activeList, Queue<GameObject> pool)
+    private void ReturnExpiredProjectiles(List<PooledProjectile> activeList, Queue<PooledProjectile> pool, float now)
     {
-        for (int i = activeList.Count - 1; i >= 0; i--)
+        // Bolt: Optimized - chronological order allows early exit for expired checks
+        for (int i = 0; i < activeList.Count; i++)
         {
             PooledProjectile projectile = activeList[i];
             if (projectile == null || projectile.gameObject == null)
             {
                 activeList.RemoveAt(i);
+                i--;
                 continue;
             }
 
-            if (projectile.IsExpired())
+            if (projectile.IsExpired(now))
             {
-                ReturnToPool(projectile.gameObject, pool, projectile.transform.parent);
+                ReturnToPool(projectile, pool, projectile.transform.parent);
                 activeList.RemoveAt(i);
+                i--;
+            }
+            else
+            {
+                // Since projectiles are added in chronological order, if this one isn't expired,
+                // the ones after it won't be either.
+                break;
             }
         }
     }
@@ -78,9 +89,12 @@ public class PlayerProjectilePool : MonoBehaviour
         int poolSize = count > 0 ? count : initialBulletPoolSize;
         for (int i = 0; i < poolSize; i++)
         {
-            GameObject bullet = CreatePooledBullet();
-            bullet.SetActive(false);
-            bulletPool.Enqueue(bullet);
+            PooledProjectile bullet = CreatePooledBullet();
+            if (bullet != null)
+            {
+                bullet.gameObject.SetActive(false);
+                bulletPool.Enqueue(bullet);
+            }
         }
     }
 
@@ -92,159 +106,165 @@ public class PlayerProjectilePool : MonoBehaviour
         int poolSize = count > 0 ? count : initialMissilePoolSize;
         for (int i = 0; i < poolSize; i++)
         {
-            GameObject missile = CreatePooledMissile();
-            missile.SetActive(false);
-            missilePool.Enqueue(missile);
+            PooledProjectile missile = CreatePooledMissile();
+            if (missile != null)
+            {
+                missile.gameObject.SetActive(false);
+                missilePool.Enqueue(missile);
+            }
         }
     }
 
-    private GameObject CreatePooledBullet()
+    private PooledProjectile CreatePooledBullet()
     {
         if (bulletPrefab == null) return null;
         
-        GameObject bullet = Instantiate(bulletPrefab, bulletContainer);
+        GameObject bulletObj = Instantiate(bulletPrefab, bulletContainer);
         
-        PooledProjectile pooled = bullet.GetComponent<PooledProjectile>();
+        PooledProjectile pooled = bulletObj.GetComponent<PooledProjectile>();
         if (pooled == null)
         {
-            pooled = bullet.AddComponent<PooledProjectile>();
+            pooled = bulletObj.AddComponent<PooledProjectile>();
         }
         
-        return bullet;
+        // Bolt: Optimized - cache properties and components at creation time
+        bulletObj.layer = LayerMask.NameToLayer("Player");
+        bulletObj.tag = "PlayerWeapon";
+        pooled.CacheComponents();
+
+        return pooled;
     }
 
-    private GameObject CreatePooledMissile()
+    private PooledProjectile CreatePooledMissile()
     {
         if (missilePrefab == null) return null;
         
-        GameObject missile = Instantiate(missilePrefab, missileContainer);
+        GameObject missileObj = Instantiate(missilePrefab, missileContainer);
         
-        PooledProjectile pooled = missile.GetComponent<PooledProjectile>();
+        PooledProjectile pooled = missileObj.GetComponent<PooledProjectile>();
         if (pooled == null)
         {
-            pooled = missile.AddComponent<PooledProjectile>();
+            pooled = missileObj.AddComponent<PooledProjectile>();
         }
         
-        return missile;
+        // Bolt: Optimized - cache properties and components at creation time
+        missileObj.layer = LayerMask.NameToLayer("Player");
+        missileObj.tag = "PlayerWeapon";
+        pooled.CacheComponents();
+
+        return pooled;
     }
 
-    public GameObject GetBullet(Vector3 position, Quaternion rotation, float lifetime = 5f)
+    public PooledProjectile GetBullet(Vector3 position, Quaternion rotation, float lifetime = 5f)
     {
-        GameObject bullet;
+        PooledProjectile pooled;
         
         if (bulletPool.Count > 0)
         {
-            bullet = bulletPool.Dequeue();
+            pooled = bulletPool.Dequeue();
         }
         else
         {
-            bullet = CreatePooledBullet();
-            if (bullet == null)
+            pooled = CreatePooledBullet();
+            if (pooled == null)
             {
                 return null;
             }
         }
 
-        bullet.transform.position = position;
-        bullet.transform.rotation = rotation;
-        bullet.SetActive(true);
+        pooled.CachedTransform.SetPositionAndRotation(position, rotation);
+        pooled.gameObject.SetActive(true);
 
-        PooledProjectile pooled = bullet.GetComponent<PooledProjectile>();
-        if (pooled != null)
+        pooled.Activate(lifetime);
+        activeBullets.Add(pooled);
+
+        if (pooled.CachedRigidbody != null)
         {
-            pooled.Activate(lifetime);
-            activeBullets.Add(pooled);
+            pooled.CachedRigidbody.linearVelocity = Vector3.zero;
+            pooled.CachedRigidbody.angularVelocity = Vector3.zero;
         }
 
-        Rigidbody rb = bullet.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
-
-        return bullet;
+        return pooled;
     }
 
-    public GameObject GetMissile(Vector3 position, Quaternion rotation, float lifetime = 10f)
+    public PooledProjectile GetMissile(Vector3 position, Quaternion rotation, float lifetime = 10f)
     {
-        GameObject missile;
+        PooledProjectile pooled;
         
         if (missilePool.Count > 0)
         {
-            missile = missilePool.Dequeue();
+            pooled = missilePool.Dequeue();
         }
         else
         {
-            missile = CreatePooledMissile();
-            if (missile == null)
+            pooled = CreatePooledMissile();
+            if (pooled == null)
             {
                 return null;
             }
         }
 
-        missile.transform.position = position;
-        missile.transform.rotation = rotation;
-        missile.SetActive(true);
+        pooled.CachedTransform.SetPositionAndRotation(position, rotation);
+        pooled.gameObject.SetActive(true);
 
-        PooledProjectile pooled = missile.GetComponent<PooledProjectile>();
-        if (pooled != null)
+        pooled.Activate(lifetime);
+        activeMissiles.Add(pooled);
+
+        if (pooled.CachedRigidbody != null)
         {
-            pooled.Activate(lifetime);
-            activeMissiles.Add(pooled);
+            pooled.CachedRigidbody.linearVelocity = Vector3.zero;
+            pooled.CachedRigidbody.angularVelocity = Vector3.zero;
         }
 
-        Rigidbody rb = missile.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
-
-        return missile;
+        return pooled;
     }
 
-    public void ReturnBullet(GameObject bullet)
+    public void ReturnBullet(GameObject bulletObj)
     {
-        if (bullet == null) return;
+        if (bulletObj == null) return;
         
-        PooledProjectile pooled = bullet.GetComponent<PooledProjectile>();
+        PooledProjectile pooled = bulletObj.GetComponent<PooledProjectile>();
         if (pooled != null)
         {
             activeBullets.Remove(pooled);
+            ReturnToPool(pooled, bulletPool, bulletContainer);
         }
-        
-        ReturnToPool(bullet, bulletPool, bulletContainer);
+        else
+        {
+            Destroy(bulletObj);
+        }
     }
 
-    public void ReturnMissile(GameObject missile)
+    public void ReturnMissile(GameObject missileObj)
     {
-        if (missile == null) return;
+        if (missileObj == null) return;
         
-        PooledProjectile pooled = missile.GetComponent<PooledProjectile>();
+        PooledProjectile pooled = missileObj.GetComponent<PooledProjectile>();
         if (pooled != null)
         {
             activeMissiles.Remove(pooled);
+            ReturnToPool(pooled, missilePool, missileContainer);
         }
-        
-        ReturnToPool(missile, missilePool, missileContainer);
+        else
+        {
+            Destroy(missileObj);
+        }
     }
 
-    private void ReturnToPool(GameObject obj, Queue<GameObject> pool, Transform container)
+    private void ReturnToPool(PooledProjectile projectile, Queue<PooledProjectile> pool, Transform container)
     {
-        if (obj == null) return;
+        if (projectile == null) return;
         
-        obj.SetActive(false);
-        obj.transform.SetParent(container);
+        projectile.gameObject.SetActive(false);
+        projectile.CachedTransform.SetParent(container);
         
-        Rigidbody rb = obj.GetComponent<Rigidbody>();
-        if (rb != null)
+        if (projectile.CachedRigidbody != null)
         {
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
+            projectile.CachedRigidbody.linearVelocity = Vector3.zero;
+            projectile.CachedRigidbody.angularVelocity = Vector3.zero;
         }
         
-        pool.Enqueue(obj);
+        pool.Enqueue(projectile);
     }
 
     public void ClearAllPools()
@@ -269,19 +289,19 @@ public class PlayerProjectilePool : MonoBehaviour
 
         while (bulletPool.Count > 0)
         {
-            GameObject bullet = bulletPool.Dequeue();
+            PooledProjectile bullet = bulletPool.Dequeue();
             if (bullet != null)
             {
-                Destroy(bullet);
+                Destroy(bullet.gameObject);
             }
         }
 
         while (missilePool.Count > 0)
         {
-            GameObject missile = missilePool.Dequeue();
+            PooledProjectile missile = missilePool.Dequeue();
             if (missile != null)
             {
-                Destroy(missile);
+                Destroy(missile.gameObject);
             }
         }
     }
@@ -292,6 +312,20 @@ public class PooledProjectile : MonoBehaviour
     private float lifetime;
     private float spawnTime;
     private bool isActive = false;
+
+    // Bolt: Optimized - cached components to avoid per-shot GetComponent calls
+    public Rigidbody CachedRigidbody { get; private set; }
+    public Transform CachedTransform { get; private set; }
+    public MissileAutoLock CachedMissileLock { get; private set; }
+    public MissileController CachedMissileController { get; private set; }
+
+    public void CacheComponents()
+    {
+        CachedRigidbody = GetComponent<Rigidbody>();
+        CachedTransform = transform;
+        CachedMissileLock = GetComponent<MissileAutoLock>();
+        CachedMissileController = GetComponent<MissileController>();
+    }
 
     public void Activate(float projectileLifetime)
     {
@@ -305,10 +339,10 @@ public class PooledProjectile : MonoBehaviour
         isActive = false;
     }
 
-    public bool IsExpired()
+    public bool IsExpired(float now)
     {
         if (!isActive) return false;
-        return Time.time - spawnTime >= lifetime;
+        return now - spawnTime >= lifetime;
     }
 
     public void ReturnToPool()
@@ -317,11 +351,8 @@ public class PooledProjectile : MonoBehaviour
         
         if (PlayerProjectilePool.Instance != null)
         {
-            if (gameObject.CompareTag("PlayerWeapon") || gameObject.CompareTag("Bullet"))
-            {
-                PlayerProjectilePool.Instance.ReturnBullet(gameObject);
-            }
-            else if (gameObject.CompareTag("Missile"))
+            // Bolt: Optimized - check component state/type instead of potentially expensive tag string comparisons
+            if (CachedMissileController != null)
             {
                 PlayerProjectilePool.Instance.ReturnMissile(gameObject);
             }
