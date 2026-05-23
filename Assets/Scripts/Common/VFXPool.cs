@@ -65,6 +65,11 @@ public class VFXPool : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             GameObject obj = Instantiate(prefab, transform);
+
+            // Bolt: Optimized component caching
+            var pooled = obj.AddComponent<PooledVFX>();
+            pooled.ps = obj.GetComponent<ParticleSystem>();
+
             obj.SetActive(false);
             queue.Enqueue(obj);
         }
@@ -89,14 +94,30 @@ public class VFXPool : MonoBehaviour
             instance = queue.Dequeue();
 
         if (instance == null)
+        {
             instance = Instantiate(prefab, position, rotation);
+            // Bolt: Optimized component caching
+            var pooled = instance.AddComponent<PooledVFX>();
+            pooled.ps = instance.GetComponent<ParticleSystem>();
+        }
         else
+        {
             instance.transform.SetPositionAndRotation(position, rotation);
+        }
 
         instance.SetActive(true);
 
-        // Reset particle systems if present
-        var ps = instance.GetComponent<ParticleSystem>();
+        // Bolt: Optimized with cached PooledVFX component
+        ParticleSystem ps = null;
+        if (instance.TryGetComponent(out PooledVFX pooledVFX))
+        {
+            ps = pooledVFX.ps;
+        }
+        else
+        {
+            ps = instance.GetComponent<ParticleSystem>();
+        }
+
         if (ps != null)
         {
             ps.Clear();
@@ -141,4 +162,10 @@ public class VFXPool : MonoBehaviour
     {
         return Get(prefab, position, Quaternion.identity, defaultLifetime);
     }
+}
+
+// Bolt: Optimized component cache for pooled VFX
+public class PooledVFX : MonoBehaviour
+{
+    public ParticleSystem ps;
 }
