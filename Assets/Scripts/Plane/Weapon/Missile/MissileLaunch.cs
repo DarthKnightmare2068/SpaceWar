@@ -162,31 +162,34 @@ public class MissileLaunch : MonoBehaviour
         {
             if (spawnPoint != null)
             {
-                GameObject missile = PlayerProjectilePool.Instance != null
+                PooledProjectile missile = PlayerProjectilePool.Instance != null
                     ? PlayerProjectilePool.Instance.GetMissile(spawnPoint.position, spawnPoint.rotation, missileLifetime)
-                    : Instantiate(missilePrefab, spawnPoint.position, spawnPoint.rotation);
-                if (missile == null) continue;
+                    : null;
+
+                if (missile == null)
+                {
+                    GameObject missileObj = Instantiate(missilePrefab, spawnPoint.position, spawnPoint.rotation);
+                    missile = missileObj.GetComponent<PooledProjectile>();
+                    if (missile == null) missile = missileObj.AddComponent<PooledProjectile>();
+                    missile.CacheComponents();
+                    missileObj.layer = LayerMask.NameToLayer("Player");
+                    missileObj.tag = "PlayerWeapon";
+                }
+
                 spawnedCount++;
 
-                MissileAutoLock missileLock = missile.GetComponent<MissileAutoLock>();
-                if (missileLock != null)
+                // Bolt: Optimized - use cached components and skip redundant tag/layer assignments
+                if (missile.CachedMissileLock != null)
                 {
-                    missileLock.SetTarget(target);
+                    missile.CachedMissileLock.SetTarget(target);
                 }
 
-                MissileController missileController = missile.GetComponent<MissileController>();
-                if (missileController != null)
+                if (missile.CachedMissileController != null)
                 {
-                    missileController.Initialize(missileSpeed, missileLifetime);
-                    missileController.SetShooter(this.gameObject);
-                    missileController.useAutoTargetLock = true;
+                    missile.CachedMissileController.Initialize(missileSpeed, missileLifetime);
+                    missile.CachedMissileController.SetShooter(this.gameObject);
+                    missile.CachedMissileController.useAutoTargetLock = true;
                 }
-
-                missile.layer = LayerMask.NameToLayer("Player");
-                missile.tag = "PlayerWeapon";
-            }
-            else
-            {
             }
         }
 
@@ -213,21 +216,29 @@ public class MissileLaunch : MonoBehaviour
             if (spawnPoint != null)
             {
                 Quaternion missileRot = Quaternion.LookRotation(guideRay.direction);
-                GameObject missile = PlayerProjectilePool.Instance != null
+                PooledProjectile missile = PlayerProjectilePool.Instance != null
                     ? PlayerProjectilePool.Instance.GetMissile(spawnPoint.position, missileRot, missileLifetime)
-                    : Instantiate(missilePrefab, spawnPoint.position, missileRot);
-                if (missile == null) continue;
+                    : null;
+
+                if (missile == null)
+                {
+                    GameObject missileObj = Instantiate(missilePrefab, spawnPoint.position, missileRot);
+                    missile = missileObj.GetComponent<PooledProjectile>();
+                    if (missile == null) missile = missileObj.AddComponent<PooledProjectile>();
+                    missile.CacheComponents();
+                    missileObj.layer = LayerMask.NameToLayer("Player");
+                    missileObj.tag = "PlayerWeapon";
+                }
+
                 spawnedCount++;
 
-                MissileController missileController = missile.GetComponent<MissileController>();
-                if (missileController != null)
+                // Bolt: Optimized - use cached components and skip redundant tag/layer assignments
+                if (missile.CachedMissileController != null)
                 {
-                    missileController.Initialize(missileSpeed, missileLifetime);
-                    missileController.SetShooter(this.gameObject);
-                    missileController.useAutoTargetLock = false;
+                    missile.CachedMissileController.Initialize(missileSpeed, missileLifetime);
+                    missile.CachedMissileController.SetShooter(this.gameObject);
+                    missile.CachedMissileController.useAutoTargetLock = false;
                 }
-                missile.layer = LayerMask.NameToLayer("Player");
-                missile.tag = "PlayerWeapon";
             }
         }
         

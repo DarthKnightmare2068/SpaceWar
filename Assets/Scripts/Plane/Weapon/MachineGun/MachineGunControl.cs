@@ -130,7 +130,7 @@ public class MachineGunControl : MonoBehaviour
             direction = spawnPoint.forward;
         }
 
-        GameObject bullet = null;
+        PooledProjectile bullet = null;
         
         if (PlayerProjectilePool.Instance != null)
         {
@@ -139,18 +139,21 @@ public class MachineGunControl : MonoBehaviour
         
         if (bullet == null)
         {
-            bullet = Instantiate(bulletPrefab, spawnPoint.position, Quaternion.LookRotation(direction));
-            Destroy(bullet, bulletLifetime);
+            GameObject bulletObj = Instantiate(bulletPrefab, spawnPoint.position, Quaternion.LookRotation(direction));
+            bullet = bulletObj.GetComponent<PooledProjectile>();
+            if (bullet == null) bullet = bulletObj.AddComponent<PooledProjectile>();
+            bullet.CacheComponents();
+            bulletObj.layer = LayerMask.NameToLayer("Player");
+            bulletObj.tag = "PlayerWeapon";
+            Destroy(bulletObj, bulletLifetime);
         }
         
         if (bullet != null)
         {
-            Rigidbody bulletRb = bullet.GetComponent<Rigidbody>();
-            if (bulletRb != null)
+            // Bolt: Optimized - use cached Rigidbody and skip redundant tag/layer assignments
+            if (bullet.CachedRigidbody != null)
             {
-                bulletRb.linearVelocity = direction * bulletSpeed;
-                bullet.layer = LayerMask.NameToLayer("Player");
-                bullet.tag = "PlayerWeapon";
+                bullet.CachedRigidbody.linearVelocity = direction * bulletSpeed;
             }
         }
     }
