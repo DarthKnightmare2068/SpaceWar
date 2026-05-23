@@ -96,14 +96,15 @@ public class AutoTargetLock : MonoBehaviour
         
         if (lockedTarget != null)
         {
-            if (!IsTargetValid(lockedTarget))
+            // Bolt: Optimized - IsTargetValid now returns viewportPos and sqrDistance to avoid redundant calculations
+            if (!IsTargetValid(lockedTarget, out Vector3 viewportPos, out float sqrDistance))
             {
                 LoseTarget();
             }
             else
             {
-                distanceToTarget = Vector3.Distance(transform.position, lockedTarget.position);
-                isTargetInLockCircle = IsInLockCircle(lockedTarget);
+                distanceToTarget = Mathf.Sqrt(sqrDistance);
+                isTargetInLockCircle = CheckIsInLockCircle(viewportPos);
                 
                 if (!isTargetInLockCircle)
                 {
@@ -186,19 +187,24 @@ public class AutoTargetLock : MonoBehaviour
         {
             if (enemy == null || !enemy.gameObject.activeInHierarchy) continue;
 
+            // Bolt: Optimized - check distance first as it's cheaper than viewport projection
+            float sqrDistance = (enemy.position - transform.position).sqrMagnitude;
+            if (sqrDistance > sqrMissileFireRange || sqrDistance >= bestSqrDistance) continue;
+
             if (!IsInLockCircle(enemy)) continue;
 
             Transform lockTarget = GetLockableTarget(enemy);
 
             if (lockTarget != null)
             {
-                float sqrDistance = (lockTarget.position - transform.position).sqrMagnitude;
-                if (sqrDistance <= sqrMissileFireRange && sqrDistance < bestSqrDistance)
+                // Re-check distance in case lockTarget position differs significantly from enemy root
+                float targetSqrDistance = (lockTarget.position - transform.position).sqrMagnitude;
+                if (targetSqrDistance <= sqrMissileFireRange && targetSqrDistance < bestSqrDistance)
                 {
                     if (!requireLineOfSight || HasLineOfSight(lockTarget))
                     {
                         bestTarget = lockTarget;
-                        bestSqrDistance = sqrDistance;
+                        bestSqrDistance = targetSqrDistance;
                     }
                 }
             }
@@ -245,17 +251,20 @@ public class AutoTargetLock : MonoBehaviour
         return "Unknown";
     }
     
-    bool IsTargetValid(Transform target)
+    bool IsTargetValid(Transform target, out Vector3 viewportPos, out float sqrDistance)
     {
+        viewportPos = Vector3.zero;
+        sqrDistance = 0f;
+
         if (target == null) return false;
         if (!target.gameObject.activeInHierarchy) return false;
         if (weaponManager == null) return false;
 
-        float sqrDistance = (target.position - transform.position).sqrMagnitude;
+        sqrDistance = (target.position - transform.position).sqrMagnitude;
         if (sqrDistance > sqrMissileFireRange) return false;
 
         if (targetingCamera == null) return false;
-        Vector3 viewportPos = targetingCamera.WorldToViewportPoint(target.position);
+        viewportPos = targetingCamera.WorldToViewportPoint(target.position);
         if (viewportPos.z <= 0) return false;
 
         if (requireLineOfSight && !HasLineOfSight(target))
@@ -271,7 +280,11 @@ public class AutoTargetLock : MonoBehaviour
         if (targetingCamera == null) return false;
 
         Vector3 viewportPos = targetingCamera.WorldToViewportPoint(target.position);
+        return CheckIsInLockCircle(viewportPos);
+    }
 
+    private bool CheckIsInLockCircle(Vector3 viewportPos)
+    {
         if (viewportPos.z <= 0) return false;
 
         float dx = viewportPos.x - 0.5f;
@@ -284,7 +297,8 @@ public class AutoTargetLock : MonoBehaviour
         if (lockedTarget == target) return;
         
         lockedTarget = target;
-        distanceToTarget = Vector3.Distance(transform.position, target.position);
+        // Bolt: Optimized - replaced Vector3.Distance with magnitude
+        distanceToTarget = (target.position - transform.position).magnitude;
         isTargetInLockCircle = true;
         
         OnTargetLocked?.Invoke(target);
