@@ -51,6 +51,29 @@ public class DmgPopUpAnimation : MonoBehaviour
             originAnchoredPosition = rectTransform.anchoredPosition;
     }
 
+    public void Setup(string text, Color color)
+    {
+        if (tmp != null)
+        {
+            tmp.text = text;
+            tmp.color = color;
+        }
+        baseColor = color;
+        ResetAnimation();
+    }
+
+    public void Setup(int damage, Color color)
+    {
+        if (tmp != null)
+        {
+            // Bolt: Optimized - use SetText to avoid string allocation
+            tmp.SetText("{0}", damage);
+            tmp.color = color;
+        }
+        baseColor = color;
+        ResetAnimation();
+    }
+
     // Per-popup advance, driven by the single coordinator below — replaces N MonoBehaviour Updates
     // with one batched loop.
     internal void Tick(float dt)
