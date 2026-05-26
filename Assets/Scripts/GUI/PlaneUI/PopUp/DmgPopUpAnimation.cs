@@ -11,6 +11,7 @@ public class DmgPopUpAnimation : MonoBehaviour
 
     private TextMeshProUGUI tmp;
     private RectTransform rectTransform;
+    private RectTransform tmpRectTransform;
     private float time = 0;
     private Vector2 originAnchoredPosition;
     private bool registered;
@@ -21,6 +22,8 @@ public class DmgPopUpAnimation : MonoBehaviour
     private void Awake()
     {
         tmp = transform.GetChild(0).GetComponent<TextMeshProUGUI>();
+        if (tmp != null)
+            tmpRectTransform = tmp.rectTransform;
         rectTransform = GetComponent<RectTransform>();
         originAnchoredPosition = rectTransform.anchoredPosition;
     }
@@ -51,6 +54,17 @@ public class DmgPopUpAnimation : MonoBehaviour
             originAnchoredPosition = rectTransform.anchoredPosition;
     }
 
+    // Bolt: Optimized - SetData avoids string allocations by using SetText("{0}", damage)
+    public void SetData(int damage, Color color)
+    {
+        baseColor = color;
+        if (tmp != null)
+        {
+            tmp.SetText("{0}", damage);
+            tmp.color = color;
+        }
+    }
+
     // Per-popup advance, driven by the single coordinator below — replaces N MonoBehaviour Updates
     // with one batched loop.
     internal void Tick(float dt)
@@ -58,7 +72,9 @@ public class DmgPopUpAnimation : MonoBehaviour
         if (tmp == null || rectTransform == null) return;
         float scaleValue = scaleCurve.Evaluate(time);
         tmp.color = new Color(baseColor.r, baseColor.g, baseColor.b, opacityCurve.Evaluate(time));
-        tmp.rectTransform.localScale = Vector3.one * scaleValue;
+        // Bolt: Optimized - use cached tmpRectTransform to avoid native property access
+        if (tmpRectTransform != null)
+            tmpRectTransform.localScale = Vector3.one * scaleValue;
         rectTransform.anchoredPosition = originAnchoredPosition + new Vector2(0, heightCurve.Evaluate(time));
         time += dt;
     }
