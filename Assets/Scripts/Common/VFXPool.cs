@@ -12,12 +12,13 @@ public class VFXPool : MonoBehaviour
     [Header("Pool Settings")]
     [SerializeField] private float defaultLifetime = 2f;
 
-    private readonly Dictionary<GameObject, Queue<GameObject>> pools = new Dictionary<GameObject, Queue<GameObject>>();
+    // Bolt: Optimized - store PooledVFX component to avoid per-spawn GetComponent lookups
+    private readonly Dictionary<GameObject, Queue<PooledVFX>> pools = new Dictionary<GameObject, Queue<PooledVFX>>();
     private readonly List<ActiveVFX> activeList = new List<ActiveVFX>();
 
     private struct ActiveVFX
     {
-        public GameObject instance;
+        public PooledVFX vfx;
         public GameObject prefab;
         public float expireAt;
     }
@@ -38,7 +39,7 @@ public class VFXPool : MonoBehaviour
         for (int i = activeList.Count - 1; i >= 0; i--)
         {
             ActiveVFX entry = activeList[i];
-            if (entry.instance == null)
+            if (entry.vfx == null)
             {
                 activeList.RemoveAt(i);
                 continue;
@@ -46,7 +47,7 @@ public class VFXPool : MonoBehaviour
             if (now >= entry.expireAt)
             {
                 activeList.RemoveAt(i);
-                Return(entry.prefab, entry.instance);
+                Return(entry.prefab, entry.vfx);
             }
         }
     }
@@ -57,16 +58,21 @@ public class VFXPool : MonoBehaviour
     public void Prewarm(GameObject prefab, int count)
     {
         if (prefab == null) return;
-        if (!pools.TryGetValue(prefab, out Queue<GameObject> queue))
+        if (!pools.TryGetValue(prefab, out Queue<PooledVFX> queue))
         {
-            queue = new Queue<GameObject>();
+            queue = new Queue<PooledVFX>();
             pools[prefab] = queue;
         }
         for (int i = 0; i < count; i++)
         {
             GameObject obj = Instantiate(prefab, transform);
+
+            // Bolt: Optimized - cache ParticleSystem during pre-warm
+            var pooled = obj.AddComponent<PooledVFX>();
+            pooled.ps = obj.GetComponent<ParticleSystem>();
+
             obj.SetActive(false);
-            queue.Enqueue(obj);
+            queue.Enqueue(pooled);
         }
     }
 
@@ -78,41 +84,45 @@ public class VFXPool : MonoBehaviour
         if (prefab == null) return null;
         if (lifetime < 0f) lifetime = defaultLifetime;
 
-        if (!pools.TryGetValue(prefab, out Queue<GameObject> queue))
+        if (!pools.TryGetValue(prefab, out Queue<PooledVFX> queue))
         {
-            queue = new Queue<GameObject>();
+            queue = new Queue<PooledVFX>();
             pools[prefab] = queue;
         }
 
-        GameObject instance = null;
-        while (queue.Count > 0 && instance == null)
-            instance = queue.Dequeue();
+        PooledVFX pooled = null;
+        while (queue.Count > 0 && pooled == null)
+            pooled = queue.Dequeue();
 
-        if (instance == null)
-            instance = Instantiate(prefab, position, rotation);
-        else
-            instance.transform.SetPositionAndRotation(position, rotation);
-
-        instance.SetActive(true);
-
-        // Reset particle systems if present
-        var ps = instance.GetComponent<ParticleSystem>();
-        if (ps != null)
+        if (pooled == null)
         {
-            ps.Clear();
-            ps.Play();
+            GameObject instance = Instantiate(prefab, position, rotation);
+            pooled = instance.AddComponent<PooledVFX>();
+            pooled.ps = instance.GetComponent<ParticleSystem>();
+        }
+        else
+        {
+            pooled.transform.SetPositionAndRotation(position, rotation);
+        }
+
+        pooled.gameObject.SetActive(true);
+
+        if (pooled.ps != null)
+        {
+            pooled.ps.Clear();
+            pooled.ps.Play();
             if (lifetime <= 0f)
-                lifetime = ps.main.duration + ps.main.startLifetime.constantMax;
+                lifetime = pooled.ps.main.duration + pooled.ps.main.startLifetime.constantMax;
         }
 
         activeList.Add(new ActiveVFX
         {
-            instance = instance,
+            vfx = pooled,
             prefab = prefab,
             expireAt = Time.time + lifetime
         });
 
-        return instance;
+        return pooled.gameObject;
     }
 
     /// <summary>
@@ -121,16 +131,35 @@ public class VFXPool : MonoBehaviour
     public void Return(GameObject prefab, GameObject instance)
     {
         if (instance == null) return;
-        instance.SetActive(false);
+
+        if (instance.TryGetComponent(out PooledVFX pooled))
+        {
+            Return(prefab, pooled);
+        }
+        else
+        {
+            // Fallback for objects without PooledVFX (shouldn't happen with current Get/Prewarm)
+            instance.SetActive(false);
+            Destroy(instance, 0.1f);
+        }
+    }
+
+    /// <summary>
+    /// Bolt: Optimized internal return that avoids GetComponent.
+    /// </summary>
+    private void Return(GameObject prefab, PooledVFX pooled)
+    {
+        if (pooled == null) return;
+        pooled.gameObject.SetActive(false);
 
         if (prefab != null)
         {
-            if (!pools.TryGetValue(prefab, out Queue<GameObject> queue))
+            if (!pools.TryGetValue(prefab, out Queue<PooledVFX> queue))
             {
-                queue = new Queue<GameObject>();
+                queue = new Queue<PooledVFX>();
                 pools[prefab] = queue;
             }
-            queue.Enqueue(instance);
+            queue.Enqueue(pooled);
         }
     }
 
@@ -141,4 +170,12 @@ public class VFXPool : MonoBehaviour
     {
         return Get(prefab, position, Quaternion.identity, defaultLifetime);
     }
+}
+
+/// <summary>
+/// Bolt: Optimized component cache for pooled VFX objects.
+/// </summary>
+public class PooledVFX : MonoBehaviour
+{
+    public ParticleSystem ps;
 }
