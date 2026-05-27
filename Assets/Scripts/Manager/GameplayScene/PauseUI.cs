@@ -15,18 +15,21 @@ public class PauseUI : MonoBehaviour
 
     void Start()
     {
-        pauseCanvas.SetActive(false);
+        SetActiveSafe(pauseCanvas, false);
     }
 
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.Escape))
         {
+            // If pauseCanvas isn't wired we just no-op rather than throw.
+            if (pauseCanvas == null) return;
+
             if (!pauseCanvas.activeSelf)
             {
                 ShowPause();
             }
-            else if (controlButtonSetUp.activeSelf)
+            else if (controlButtonSetUp != null && controlButtonSetUp.activeSelf)
             {
                 BackToPause();
             }
@@ -39,37 +42,42 @@ public class PauseUI : MonoBehaviour
 
     public void ShowPause()
     {
-        pauseCanvas.SetActive(true);
-        planeCanvas.SetActive(false);
-        controlButtonSetUp.SetActive(false);
-        continueButton.SetActive(true);
-        controlButton.SetActive(true);
-        returnButton.SetActive(true);
+        SetActiveSafe(pauseCanvas, true);
+        SetActiveSafe(planeCanvas, false);
+        SetActiveSafe(controlButtonSetUp, false);
+        SetActiveSafe(continueButton, true);
+        SetActiveSafe(controlButton, true);
+        SetActiveSafe(returnButton, true);
         Time.timeScale = 0f;
     }
 
     public void ContinueGame()
     {
-        pauseCanvas.SetActive(false);
-        planeCanvas.SetActive(true);
-        controlButtonSetUp.SetActive(false);
+        SetActiveSafe(pauseCanvas, false);
+        SetActiveSafe(planeCanvas, true);
+        SetActiveSafe(controlButtonSetUp, false);
         Time.timeScale = 1f;
     }
 
     public void ShowPauseMenu()
     {
-        controlButtonSetUp.SetActive(true);
-        continueButton.SetActive(false);
-        controlButton.SetActive(false);
-        returnButton.SetActive(false);
+        SetActiveSafe(controlButtonSetUp, true);
+        SetActiveSafe(continueButton, false);
+        SetActiveSafe(controlButton, false);
+        SetActiveSafe(returnButton, false);
     }
 
     public void BackToPause()
     {
-        controlButtonSetUp.SetActive(false);
-        continueButton.SetActive(true);
-        controlButton.SetActive(true);
-        returnButton.SetActive(true);
+        SetActiveSafe(controlButtonSetUp, false);
+        SetActiveSafe(continueButton, true);
+        SetActiveSafe(controlButton, true);
+        SetActiveSafe(returnButton, true);
+    }
+
+    private static void SetActiveSafe(GameObject go, bool active)
+    {
+        if (go != null) go.SetActive(active);
     }
 
     public void ReturnToEnterGame()

@@ -8,6 +8,10 @@ public class BulletPool : MonoBehaviour
 
     [SerializeField] private GameObject bulletPrefab;
     [SerializeField] private int poolSize = 100;
+    [Tooltip("How many bullets to instantiate per frame during pool warm-up. Lower = smoother startup, longer warm-up.")]
+    [SerializeField] private int prewarmBatchSize = 4;
+    [Tooltip("Per-frame time budget (ms) for pool warm-up. Stops creating once exceeded, even if batch isn't done.")]
+    [SerializeField] private float prewarmBudgetMs = 2f;
 
     private Dictionary<string, float> projectileLifetimes = new Dictionary<string, float>();
     private Queue<GameObject> bulletPool = new Queue<GameObject>();
@@ -36,19 +40,24 @@ public class BulletPool : MonoBehaviour
 
     private IEnumerator InitializePoolAsync()
     {
-        // Create bullets in batches to avoid frame spikes
-        int bulletsPerFrame = 10;
+        // Create bullets across multiple frames, capped by both a per-frame batch size
+        // AND a wall-clock budget so we never blow a frame even if a single Instantiate
+        // is unexpectedly expensive.
         int created = 0;
-        
+        int batch = Mathf.Max(1, prewarmBatchSize);
+        float budgetSeconds = Mathf.Max(0.5f, prewarmBudgetMs) / 1000f;
+
         while (created < poolSize)
         {
-            int toCreate = Mathf.Min(bulletsPerFrame, poolSize - created);
+            float frameStart = Time.realtimeSinceStartup;
+            int toCreate = Mathf.Min(batch, poolSize - created);
             for (int i = 0; i < toCreate; i++)
             {
                 CreateNewBullet();
                 created++;
+                if (Time.realtimeSinceStartup - frameStart > budgetSeconds) break;
             }
-            yield return null; // Wait one frame between batches
+            yield return null;
         }
     }
 

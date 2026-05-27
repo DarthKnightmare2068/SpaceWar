@@ -20,6 +20,15 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // Cached collider data used during respawn placement checks.
+    // Declared at class scope because C# does not allow struct declarations inside method bodies.
+    private struct ColliderInfo
+    {
+        public Collider col;
+        public Bounds bounds;
+        public Transform transform;
+    }
+
     public static GameManager Instance;
 
     public GameObject deadScreen;
@@ -79,6 +88,14 @@ public class GameManager : MonoBehaviour
     // Cached references to avoid expensive FindObjectOfType calls
     private Ilumisoft.RadarSystem.Radar[] cachedRadars;
     private bool radarsCached = false;
+
+    // Smoothed FPS using an exponential moving average of unscaled frame times.
+    // Raw `1f / Time.unscaledDeltaTime` swings wildly even on a steady 60 FPS game
+    // because per-frame deltas naturally vary by 1-3 ms; averaging gives a stable readout.
+    [Tooltip("Smoothing factor for the FPS readout. ~0.1s feels responsive but stable.")]
+    [SerializeField] private float fpsSmoothingTimeConstant = 0.1f;
+    private float smoothedUnscaledDeltaTime;
+    private bool fpsSmoothingInitialized;
 
     void Awake()
     {
@@ -276,12 +293,6 @@ public class GameManager : MonoBehaviour
         float minSafeDistanceSqr = minSafeDistance * minSafeDistance;
         
         // Bolt: Optimized - cache colliders and bounds to avoid repeated native property access and GetComponent calls
-        struct ColliderInfo
-        {
-            public Collider col;
-            public Bounds bounds;
-            public Transform transform;
-        }
         List<ColliderInfo> enemyColliderInfos = new List<ColliderInfo>();
         foreach (var ship in activeEnemyShips)
         {
@@ -429,19 +440,33 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // When monitor refresh rate matches the target, vsync gives a hard cap.
-        // Otherwise disable vsync and let targetFrameRate soft-limit the frame rate.
-        int screenHz = (int)Screen.currentResolution.refreshRateRatio.value;
+        // Prefer vsync whenever the monitor refresh rate is an integer multiple of the target FPS.
+        // - 60Hz target on a 60Hz monitor  -> vSyncCount=1 (cap at 60)
+        // - 60Hz target on a 120Hz monitor -> vSyncCount=2 (cap at 60)
+        // - 60Hz target on a 144Hz monitor -> no clean divisor, fall back to soft cap.
+        // Vsync gives genuinely steady pacing; Application.targetFrameRate on its own uses
+        // Sleep() on Windows and produces noticeable frame-time jitter.
+        int screenHz = Mathf.RoundToInt((float)Screen.currentResolution.refreshRateRatio.value);
         if (screenHz > 0 && Mathf.Abs(screenHz - targetFPS) <= 2)
         {
             QualitySettings.vSyncCount = 1;
             Application.targetFrameRate = -1;
+            return;
         }
-        else
+
+        if (screenHz > 0 && targetFPS > 0 && screenHz > targetFPS)
         {
-            QualitySettings.vSyncCount = 0;
-            Application.targetFrameRate = targetFPS;
+            int divisor = Mathf.RoundToInt((float)screenHz / targetFPS);
+            if (divisor >= 1 && divisor <= 4 && Mathf.Abs(screenHz - divisor * targetFPS) <= 2)
+            {
+                QualitySettings.vSyncCount = divisor;
+                Application.targetFrameRate = -1;
+                return;
+            }
         }
+
+        QualitySettings.vSyncCount = 0;
+        Application.targetFrameRate = targetFPS;
     }
 
     public void ChangeFPSLock(int newTargetFPS)
@@ -478,9 +503,34 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    void Update()
+    {
+        UpdateSmoothedFPS();
+    }
+
+    private void UpdateSmoothedFPS()
+    {
+        float dt = Time.unscaledDeltaTime;
+        if (dt <= 0f) return;
+
+        if (!fpsSmoothingInitialized)
+        {
+            smoothedUnscaledDeltaTime = dt;
+            fpsSmoothingInitialized = true;
+            return;
+        }
+
+        // Time-constant-based EMA: alpha derived from the frame's dt so the smoothing
+        // feels consistent regardless of frame rate.
+        float tau = Mathf.Max(fpsSmoothingTimeConstant, 0.001f);
+        float alpha = 1f - Mathf.Exp(-dt / tau);
+        smoothedUnscaledDeltaTime += (dt - smoothedUnscaledDeltaTime) * alpha;
+    }
+
     public float GetCurrentFPS()
     {
-        return 1f / Time.unscaledDeltaTime;
+        float dt = fpsSmoothingInitialized ? smoothedUnscaledDeltaTime : Time.unscaledDeltaTime;
+        return dt > 0f ? 1f / dt : 0f;
     }
 
     public string GetCurrentFPSString()

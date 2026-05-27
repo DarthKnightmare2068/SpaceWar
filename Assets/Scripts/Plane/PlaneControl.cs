@@ -108,7 +108,7 @@ public partial class PlaneControl : MonoBehaviour
             AirControl();
             HandleThruster();
             // Bolt: Optimized - removed redundant ControlPlaneEffects call as the ThrusterBoost coroutine manages these effects
-            HandleAutoBalance();
+            // Auto-balance moved to FixedUpdate so it doesn't fight the physics step.
 
             if (planeCamera != null)
                 planeCamera.localRotation = cameraOriginalLocalRotation;
@@ -130,15 +130,20 @@ public partial class PlaneControl : MonoBehaviour
 
     void FixedUpdate()
     {
+        Quaternion baseRotation = rb.rotation;
+
         if (!isFlipping)
         {
             Quaternion rotChange = Quaternion.Euler(
                 -pendingMouseY * pitchPower * Time.fixedDeltaTime,
                  pendingMouseX * yawPower * Time.fixedDeltaTime,
                  0f);
-            rb.MoveRotation(rb.rotation * rotChange);
+            baseRotation = baseRotation * rotChange;
             pendingMouseX = 0f;
             pendingMouseY = 0f;
+
+            baseRotation = ApplyAutoBalance(baseRotation, Time.fixedDeltaTime);
+            rb.MoveRotation(baseRotation);
         }
 
         ApplyFlightForces();
@@ -185,28 +190,29 @@ public partial class PlaneControl : MonoBehaviour
         }
     }
 
-    void HandleAutoBalance()
+    // Runs inside FixedUpdate and applies via rb.MoveRotation so the physics engine
+    // doesn't fight against a direct transform.eulerAngles write each frame.
+    // Returns the adjusted rotation; FixedUpdate then commits with rb.MoveRotation once.
+    private Quaternion ApplyAutoBalance(Quaternion currentRotation, float deltaTime)
     {
-        if (rollInputTimer > 0)
+        if (rollInputTimer > 0f)
         {
-            rollInputTimer -= Time.deltaTime;
+            rollInputTimer -= deltaTime;
+            return currentRotation;
         }
 
-        if (rollInputTimer <= 0)
-        {
-            float currentRoll = transform.eulerAngles.z;
-            if (currentRoll > 180f) currentRoll -= 360f;
+        Vector3 euler = currentRotation.eulerAngles;
+        float currentRoll = euler.z;
+        if (currentRoll > 180f) currentRoll -= 360f;
 
-            if (Mathf.Abs(currentRoll) > autoBalanceThreshold)
-            {
-                float targetRoll = 0f;
-                float rollCorrection = Mathf.Lerp(currentRoll, targetRoll, Time.deltaTime * autoBalanceStrength);
-                
-                Vector3 currentRotation = transform.eulerAngles;
-                currentRotation.z = rollCorrection;
-                transform.eulerAngles = currentRotation;
-            }
-        }
+        if (Mathf.Abs(currentRoll) <= autoBalanceThreshold)
+            return currentRotation;
+
+        // Framerate-independent smoothing: exponential approach to 0 roll.
+        float t = 1f - Mathf.Exp(-deltaTime * autoBalanceStrength);
+        float rollCorrection = Mathf.Lerp(currentRoll, 0f, t);
+        euler.z = rollCorrection;
+        return Quaternion.Euler(euler);
     }
 
     void ApplyFlightForces()
