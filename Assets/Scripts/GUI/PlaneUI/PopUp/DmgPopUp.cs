@@ -13,7 +13,14 @@ public class DmgPopUp : MonoBehaviour
 
     private const int POOL_SIZE = 20;
     private const float POPUP_LIFETIME = 1f;
-    private ObjectPool<Transform> pool;
+    private ObjectPool<DmgPopUpAnimation> pool;
+
+    private struct ActivePopUp
+    {
+        public DmgPopUpAnimation animation;
+        public float returnTime;
+    }
+    private Queue<ActivePopUp> activePopUps = new Queue<ActivePopUp>();
 
     private void Awake()
     {
@@ -22,9 +29,19 @@ public class DmgPopUp : MonoBehaviour
         cachedCamera = Camera.main;
         cachedCanvas = GetComponentInParent<Canvas>();
 
-        // Pre-warm pool to avoid Instantiate on first hits.
-        Transform prefabTransform = dmgPopUpPrefab != null ? dmgPopUpPrefab.transform : null;
-        pool = new ObjectPool<Transform>(prefabTransform, POOL_SIZE, transform.parent);
+        // Bolt: Optimized - Pre-warm pool with DmgPopUpAnimation to avoid per-popup GetComponent calls.
+        DmgPopUpAnimation prefabAnim = dmgPopUpPrefab != null ? dmgPopUpPrefab.GetComponent<DmgPopUpAnimation>() : null;
+        pool = new ObjectPool<DmgPopUpAnimation>(prefabAnim, POOL_SIZE, transform.parent);
+    }
+
+    private void Update()
+    {
+        // Bolt: Optimized - centralized recycling system avoids per-popup Coroutine and WaitForSeconds allocations.
+        while (activePopUps.Count > 0 && Time.time >= activePopUps.Peek().returnTime)
+        {
+            ActivePopUp popUp = activePopUps.Dequeue();
+            if (popUp.animation != null) pool.Release(popUp.animation);
+        }
     }
 
     public static void ShowDamage(Vector3 worldPosition, int damage, Color color)
@@ -37,7 +54,8 @@ public class DmgPopUp : MonoBehaviour
             Camera cam = current.cachedCamera != null ? current.cachedCamera : Camera.main;
             spawnPos = cam.WorldToScreenPoint(worldPosition);
         }
-        current.ShowPopUp(spawnPos, damage.ToString(), color);
+        // Bolt: Optimized - pass int damage directly to avoid ToString() string allocation.
+        current.ShowPopUp(spawnPos, damage, color);
     }
 
     public static void ShowLaserDamage(Vector3 worldPosition, int damage)
@@ -45,30 +63,24 @@ public class DmgPopUp : MonoBehaviour
         ShowDamage(worldPosition, damage, Color.blue);
     }
 
-    private void ShowPopUp(Vector3 position, string text, Color color)
+    private void ShowPopUp(Vector3 position, int damage, Color color)
     {
-        Transform popUp = pool != null ? pool.Get(position, Quaternion.identity) : null;
-        if (popUp == null) return;
-        popUp.SetParent(transform.parent, worldPositionStays: true);
-        popUp.position = position;
+        // Bolt: Optimized - pool.Get returns DmgPopUpAnimation directly.
+        DmgPopUpAnimation anim = pool != null ? pool.Get(position, Quaternion.identity) : null;
+        if (anim == null) return;
 
-        var tmp = popUp.GetChild(0).GetComponent<TextMeshProUGUI>();
-        tmp.text = text;
-        tmp.color = color;
+        Transform popUpTransform = anim.transform;
+        popUpTransform.SetParent(transform.parent, worldPositionStays: true);
+        popUpTransform.position = position;
 
-        var anim = popUp.GetComponent<DmgPopUpAnimation>();
-        if (anim != null)
+        // Bolt: Optimized - SetData handles text and color updates efficiently.
+        anim.SetData(damage, color);
+        anim.ResetAnimation();
+
+        activePopUps.Enqueue(new ActivePopUp
         {
-            anim.baseColor = color;
-            anim.ResetAnimation();
-        }
-
-        StartCoroutine(ReturnToPool(popUp, POPUP_LIFETIME));
-    }
-
-    private IEnumerator ReturnToPool(Transform obj, float delay)
-    {
-        yield return new WaitForSeconds(delay);
-        if (obj != null) pool.Release(obj);
+            animation = anim,
+            returnTime = Time.time + POPUP_LIFETIME
+        });
     }
 }
