@@ -77,23 +77,37 @@ public class WeaponHealthBar : DualSliderBar
 
     void Update()
     {
+        bool healthChanged = false;
         if (healthSource != null)
         {
-            currentHP = (int)healthSource.CurrentHP;
-            maxHP = (int)healthSource.MaxHP;
+            // Bolt: Optimized - Clamp values before comparison to avoid per-frame updates on negative health
+            int nextHP = Mathf.Max(0, (int)healthSource.CurrentHP);
+            int nextMax = Mathf.Max(1, (int)healthSource.MaxHP);
+
+            if (nextHP != currentHP || nextMax != maxHP)
+            {
+                currentHP = nextHP;
+                maxHP = nextMax;
+                healthChanged = true;
+            }
         }
 
-        if (maxHP <= 0) maxHP = 1;
-        if (currentHP < 0) currentHP = 0;
+        // Bolt: Optimized - avoid per-frame UI property sets and text updates if health hasn't changed
+        // and the ease bar has finished its animation.
+        bool easeAnimating = easeHealthBarSlider != null && normalHealthBarSlider != null &&
+                             easeHealthBarSlider.value != normalHealthBarSlider.value;
 
-        float percent = maxHP > 0 ? (float)currentHP / maxHP : 0f;
-        UpdateBars(percent);
-
-        if (healthText != null && (currentHP != lastDisplayedHP || maxHP != lastDisplayedMaxHP))
+        if (healthChanged || easeAnimating)
         {
-            lastDisplayedHP = currentHP;
-            lastDisplayedMaxHP = maxHP;
-            healthText.text = $"{currentHP} / {maxHP}";
+            float percent = (float)currentHP / maxHP;
+            UpdateBars(percent);
+
+            if (healthText != null && (currentHP != lastDisplayedHP || maxHP != lastDisplayedMaxHP))
+            {
+                lastDisplayedHP = currentHP;
+                lastDisplayedMaxHP = maxHP;
+                healthText.text = $"{currentHP} / {maxHP}";
+            }
         }
 
         if (playerTransform != null && activeCamera == null)

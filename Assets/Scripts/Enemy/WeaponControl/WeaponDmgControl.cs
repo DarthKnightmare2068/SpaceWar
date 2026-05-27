@@ -68,11 +68,36 @@ public class WeaponDmgControl : MonoBehaviour
 
     void Update()
     {
-        TickRevive(ref turretReviveTimer, ref turretReviveRunning,
-            () => { if (turretsManager != null && turretsManager.currentTurretCount > 0) ReviveAllTurrets(); });
-        TickRevive(ref cannonReviveTimer, ref cannonReviveRunning,
-            () => { if (smallCanonManager != null && smallCanonManager.currentCanonCount > 0) ReviveAllCanons(); });
-        TickRevive(ref bigCannonReviveTimer, ref bigCannonReviveRunning, ReviveAllBigCanons);
+        // Bolt: Optimized - Inlined revival logic to avoid per-frame lambda allocations (GC pressure)
+        if (turretReviveRunning)
+        {
+            turretReviveTimer -= Time.deltaTime;
+            if (turretReviveTimer <= 0f)
+            {
+                turretReviveRunning = false;
+                if (turretsManager != null && turretsManager.currentTurretCount > 0) ReviveAllTurrets();
+            }
+        }
+
+        if (cannonReviveRunning)
+        {
+            cannonReviveTimer -= Time.deltaTime;
+            if (cannonReviveTimer <= 0f)
+            {
+                cannonReviveRunning = false;
+                if (smallCanonManager != null && smallCanonManager.currentCanonCount > 0) ReviveAllCanons();
+            }
+        }
+
+        if (bigCannonReviveRunning)
+        {
+            bigCannonReviveTimer -= Time.deltaTime;
+            if (bigCannonReviveTimer <= 0f)
+            {
+                bigCannonReviveRunning = false;
+                ReviveAllBigCanons();
+            }
+        }
 
         weaponCacheTimer -= Time.deltaTime;
         if (weaponCacheTimer <= 0f)
@@ -80,13 +105,6 @@ public class WeaponDmgControl : MonoBehaviour
             weaponCacheTimer = WEAPON_CACHE_INTERVAL;
             cachedAllWeaponsInactive = ComputeAllWeaponsInactive();
         }
-    }
-
-    private void TickRevive(ref float timer, ref bool running, Action onRevive)
-    {
-        if (!running) return;
-        timer -= Time.deltaTime;
-        if (timer <= 0f) { running = false; onRevive(); }
     }
 
     // Called by weapons on death or revive — refreshes the cache immediately and
