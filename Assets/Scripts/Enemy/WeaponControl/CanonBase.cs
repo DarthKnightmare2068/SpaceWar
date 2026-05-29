@@ -34,6 +34,11 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     protected float fireRangeSqr;
     protected float fireRangeGateSqr;
     protected float currentSqrDistToEnemy;
+    protected Vector3 currentEnemyPos;
+    protected Vector3 currentBodyPos;
+    protected Vector3 currentJointPos;
+    protected Vector3 currentTargetDir;
+    protected Vector3 currentWorldDirToJoint;
     protected float laserDamageInterval = 1f;
     protected float laserDamageTimer;
     protected bool isTargetLocked;
@@ -125,8 +130,16 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         // Threshold is fireRange * sqrt(2) (sqr 2x) so cannons re-engage smoothly on approach.
         if (enemy != null)
         {
+            // Bolt: Optimized - cache positions to avoid multiple native property accesses
+            currentEnemyPos = enemy.position;
+            Vector3 myPos = transform.position;
+            currentBodyPos = body.position;
+            currentJointPos = joint.position;
+            currentTargetDir = currentEnemyPos - currentBodyPos;
+            currentWorldDirToJoint = currentEnemyPos - currentJointPos;
+
             // Bolt: Optimized per-frame distance caching
-            currentSqrDistToEnemy = (enemy.position - transform.position).sqrMagnitude;
+            currentSqrDistToEnemy = (currentEnemyPos - myPos).sqrMagnitude;
             if (fireRangeGateSqr > 0f && currentSqrDistToEnemy > fireRangeGateSqr)
             {
                 if (isTargetLocked)
@@ -232,9 +245,14 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         if (lastHitValid)
             // Bolt: Optimized to use RaycastHit.distance
             distance = lastHit.distance;
-        currentLaserScale = distance;
-        // Bolt: Optimized with multiplication
-        laserVFX.transform.localScale = new Vector3(currentLaserScale * 0.5f, currentLaserScale * 0.5f, currentLaserScale);
+
+        // Bolt: Optimized - only update scale if it changed significantly to avoid native calls
+        if (!Mathf.Approximately(currentLaserScale, distance))
+        {
+            currentLaserScale = distance;
+            // Bolt: Optimized with multiplication
+            laserVFX.transform.localScale = new Vector3(currentLaserScale * 0.5f, currentLaserScale * 0.5f, currentLaserScale);
+        }
     }
 
     protected void HandleTargeting()
@@ -285,7 +303,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     {
         if (enemy == null) return false;
 
-        Vector3 targetDirection = enemy.position - body.position;
+        Vector3 targetDirection = currentTargetDir;
         targetDirection.y = 0;
         if (targetDirection == Vector3.zero) return false;
 
@@ -295,10 +313,13 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         if (bodyAngle > 180f) bodyAngle -= 360f;
         if (Mathf.Abs(bodyAngle) > maxBodyRotationAngle) return false;
 
-        Vector3 worldDirToTarget = enemy.position - joint.position;
+        Vector3 worldDirToTarget = currentWorldDirToJoint;
         if (worldDirToTarget == Vector3.zero) return false;
 
-        Quaternion targetLocalRotation = Quaternion.Inverse(body.rotation) * Quaternion.LookRotation(worldDirToTarget, body.up);
+        // Bolt: Optimized - cache body rotation and up vector
+        Quaternion currentBodyRot = body.rotation;
+        Vector3 currentBodyUp = body.up;
+        Quaternion targetLocalRotation = Quaternion.Inverse(currentBodyRot) * Quaternion.LookRotation(worldDirToTarget, currentBodyUp);
         targetLocalRotation.y = 0;
         targetLocalRotation.z = 0;
         float jointPitch = targetLocalRotation.eulerAngles.x;
@@ -360,7 +381,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
     {
         if (enemy == null) return;
 
-        Vector3 targetDir = enemy.position - body.position;
+        Vector3 targetDir = currentTargetDir;
         targetDir.y = 0;
         if (targetDir != Vector3.zero)
         {
@@ -372,10 +393,13 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
             body.rotation = trackPlayerInstantly ? target : Quaternion.Slerp(body.rotation, target, maxRotationSpeed * Time.deltaTime);
         }
 
-        Vector3 worldDir = enemy.position - joint.position;
+        Vector3 worldDir = currentWorldDirToJoint;
         if (worldDir != Vector3.zero)
         {
-            Quaternion localRot = Quaternion.Inverse(body.rotation) * Quaternion.LookRotation(worldDir, body.up);
+            // Bolt: Optimized - cache body rotation and up vector
+            Quaternion currentBodyRot = body.rotation;
+            Vector3 currentBodyUp = body.up;
+            Quaternion localRot = Quaternion.Inverse(currentBodyRot) * Quaternion.LookRotation(worldDir, currentBodyUp);
             localRot.y = 0;
             localRot.z = 0;
             float pitch = localRot.eulerAngles.x;
