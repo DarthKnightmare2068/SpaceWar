@@ -20,10 +20,16 @@ public class LevelUpSystem : MonoBehaviour
 
     private PlaneStats playerPlane;
 
+    private struct TrackedEntity
+    {
+        public IHasHealth Target;
+        public MonoBehaviour MonoBehaviour;
+        public float LastHP;
+    }
+
     // List for ordered iteration; HashSet for O(1) duplicate-check in TrackWeaponsOnObject.
-    private List<IHasHealth> trackedTargets = new List<IHasHealth>();
+    private List<TrackedEntity> trackedEntities = new List<TrackedEntity>();
     private HashSet<IHasHealth> trackedSet = new HashSet<IHasHealth>();
-    private Dictionary<IHasHealth, float> lastHP = new Dictionary<IHasHealth, float>();
 
     private PlayerWeaponManager cachedWeaponManager;
     private LaserActive cachedLaserActive;
@@ -89,6 +95,17 @@ public class LevelUpSystem : MonoBehaviour
 
     void Update()
     {
+        if (currentLevel >= MAX_LEVEL)
+        {
+            // At max level, clear tracking to free memory and skip all targeting/damage logic.
+            if (trackedEntities.Count > 0)
+            {
+                trackedEntities.Clear();
+                trackedSet.Clear();
+            }
+            return;
+        }
+
         if (playerPlane == null || playerPlane.IsDead())
         {
             if (Time.time >= nextEnemyScanTime)
@@ -98,31 +115,20 @@ public class LevelUpSystem : MonoBehaviour
             }
         }
 
-        CleanupTrackedTargets();
         _damageTrackFrame++;
-        if (_damageTrackFrame % 5 == 0)
-            TrackEnemyDamage();
+        if (_damageTrackFrame >= 5)
+        {
+            _damageTrackFrame = 0;
+            ProcessTrackedTargets();
+        }
     }
 
     private void Track(IHasHealth target, float hp)
     {
         if (!trackedSet.Add(target)) return; // already tracked
-        trackedTargets.Add(target);
-        lastHP[target] = hp;
+        trackedEntities.Add(new TrackedEntity { Target = target, MonoBehaviour = target as MonoBehaviour, LastHP = hp });
     }
 
-    private void CleanupTrackedTargets()
-    {
-        for (int i = trackedTargets.Count - 1; i >= 0; i--)
-        {
-            if ((trackedTargets[i] as MonoBehaviour) == null)
-            {
-                trackedSet.Remove(trackedTargets[i]);
-                lastHP.Remove(trackedTargets[i]);
-                trackedTargets.RemoveAt(i);
-            }
-        }
-    }
 
     private void CachePlayerReferences(GameObject player)
     {
@@ -146,9 +152,8 @@ public class LevelUpSystem : MonoBehaviour
         else
             CachePlayerReferences(null);
 
-        trackedTargets.Clear();
+        trackedEntities.Clear();
         trackedSet.Clear();
-        lastHP.Clear();
 
         if (GameManager.Instance != null)
         {
@@ -207,15 +212,30 @@ public class LevelUpSystem : MonoBehaviour
         }
     }
 
-    private void TrackEnemyDamage()
+    private void ProcessTrackedTargets()
     {
-        foreach (var target in trackedTargets)
+        for (int i = trackedEntities.Count - 1; i >= 0; i--)
         {
-            if ((target as MonoBehaviour) == null) continue;
-            float current = target.CurrentHP;
-            if (lastHP.TryGetValue(target, out float last) && current < last)
-                AddDamageExperience(last - current);
-            lastHP[target] = current;
+            TrackedEntity entity = trackedEntities[i];
+
+            // If the object was destroyed, clean it up.
+            if (entity.MonoBehaviour == null)
+            {
+                trackedSet.Remove(entity.Target);
+                trackedEntities.RemoveAt(i);
+                continue;
+            }
+
+            // Track damage since last check.
+            float currentHP = entity.Target.CurrentHP;
+            if (currentHP < entity.LastHP)
+            {
+                AddDamageExperience(entity.LastHP - currentHP);
+            }
+
+            // Update the cached HP in the list directly.
+            entity.LastHP = currentHP;
+            trackedEntities[i] = entity;
         }
     }
 
