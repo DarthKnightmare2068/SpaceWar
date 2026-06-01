@@ -19,7 +19,10 @@ public class EnemyHealthBar : DualSliderBar
 
     private int lastDisplayedHP = -1;
     private int lastDisplayedMaxHP = -1;
+    private float lastHP = -1f;
+    private float lastMaxHP = -1f;
     private bool lastWasDefeated = false;
+    private string cachedTargetName = string.Empty;
 
     void Start()
     {
@@ -62,9 +65,14 @@ public class EnemyHealthBar : DualSliderBar
     public void SetTarget(IHasHealth enemy)
     {
         targetEnemy = enemy;
+        lastHP = -1f;
+        lastMaxHP = -1f;
         lastDisplayedHP = -1;
         lastDisplayedMaxHP = -1;
         lastWasDefeated = false;
+        // Bolt: Optimized - cache target name to avoid per-frame native calls and allocations
+        cachedTargetName = (targetEnemy != null) ? targetEnemy.name : string.Empty;
+
         if (targetEnemy != null)
         {
             gameObject.SetActive(true);
@@ -79,45 +87,59 @@ public class EnemyHealthBar : DualSliderBar
 
     void Update()
     {
-        if (targetEnemy != null)
+        if (targetEnemy == null)
         {
-            float healthPercent = (targetEnemy.MaxHP > 0) ? (targetEnemy.CurrentHP / targetEnemy.MaxHP) : 0;
-            if (targetEnemy.CurrentHP <= 0)
+            if (!lastWasDefeated)
             {
-                if (normalHealthBarSlider != null)
-                    normalHealthBarSlider.value = 0f;
-                if (easeHealthBarSlider != null)
-                    easeHealthBarSlider.value = 0f;
-                if (nameText != null && !lastWasDefeated)
-                {
-                    nameText.text = "Enemy Defeated";
-                    lastWasDefeated = true;
-                }
-            }
-            else
-            {
-                lastWasDefeated = false;
-                UpdateBars(healthPercent);
+                ForceSetBars(0f);
                 if (nameText != null)
-                {
-                    int hp = Mathf.CeilToInt(targetEnemy.CurrentHP);
-                    int maxHp = Mathf.CeilToInt(targetEnemy.MaxHP);
-                    if (hp != lastDisplayedHP || maxHp != lastDisplayedMaxHP)
-                    {
-                        lastDisplayedHP = hp;
-                        lastDisplayedMaxHP = maxHp;
-                        nameText.text = $"{targetEnemy.name}: {hp} / {maxHp}";
-                    }
-                }
-            }
-        }
-        else
-        {
-            ForceSetBars(0f);
-            if (nameText != null && !lastWasDefeated)
-            {
-                nameText.text = "Enemy Defeated";
+                    nameText.text = "Enemy Defeated";
                 lastWasDefeated = true;
+            }
+            return;
+        }
+
+        float currentHP = targetEnemy.CurrentHP;
+        float maxHP = targetEnemy.MaxHP;
+
+        if (currentHP <= 0)
+        {
+            if (!lastWasDefeated)
+            {
+                ForceSetBars(0f);
+                if (nameText != null)
+                    nameText.text = "Enemy Defeated";
+                lastWasDefeated = true;
+            }
+            return;
+        }
+
+        lastWasDefeated = false;
+
+        int hpInt = Mathf.CeilToInt(currentHP);
+        int maxHpInt = Mathf.CeilToInt(maxHP);
+
+        bool textChanged = (hpInt != lastDisplayedHP || maxHpInt != lastDisplayedMaxHP);
+        bool healthChanged = !Mathf.Approximately(currentHP, lastHP) || !Mathf.Approximately(maxHP, lastMaxHP);
+
+        // Bolt: Optimized - check if ease bar is still animating to avoid redundant UpdateBars calls
+        bool easeAnimating = easeHealthBarSlider != null && normalHealthBarSlider != null &&
+                             !Mathf.Approximately(easeHealthBarSlider.value, normalHealthBarSlider.value);
+
+        if (healthChanged || easeAnimating)
+        {
+            lastHP = currentHP;
+            lastMaxHP = maxHP;
+
+            float healthPercent = (maxHP > 0) ? (currentHP / maxHP) : 0;
+            UpdateBars(healthPercent);
+
+            if (nameText != null && textChanged)
+            {
+                lastDisplayedHP = hpInt;
+                lastDisplayedMaxHP = maxHpInt;
+                // Bolt: Optimized - use cachedTargetName to avoid per-frame native calls/allocations
+                nameText.text = $"{cachedTargetName}: {hpInt} / {maxHpInt}";
             }
         }
     }
