@@ -25,7 +25,8 @@ public class FPSDisplay : MonoBehaviour
     {
         if(fpsText != null && GameManager.Instance != null)
         {
-            fpsText.text = "FPS: " + GameManager.Instance.GetCurrentFPSString();
+            // Bolt: Optimized - use SetText with format to avoid periodic string allocations
+            fpsText.SetText("FPS: {0:F0}", GameManager.Instance.GetCurrentFPS());
         }
     }
 }
