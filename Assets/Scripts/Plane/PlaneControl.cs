@@ -63,6 +63,9 @@ public partial class PlaneControl : MonoBehaviour
     private float lastSpeed = float.NegativeInfinity;
     private Vector3 lastForward = Vector3.zero;
 
+    private float groundCheckTimer = 0f;
+    private const float GROUND_CHECK_INTERVAL = 0.1f;
+
     void Start()
     {
         rb = GetComponent<Rigidbody>();
@@ -110,8 +113,8 @@ public partial class PlaneControl : MonoBehaviour
             // Bolt: Optimized - removed redundant ControlPlaneEffects call as the ThrusterBoost coroutine manages these effects
             // Auto-balance moved to FixedUpdate so it doesn't fight the physics step.
 
-            if (planeCamera != null)
-                planeCamera.localRotation = cameraOriginalLocalRotation;
+            // Bolt: Optimized - removed redundant planeCamera.localRotation assignment.
+            // Reset is now handled in HandleFlip completion.
         }
         else
         {
@@ -124,7 +127,14 @@ public partial class PlaneControl : MonoBehaviour
                 planeCamera.localEulerAngles = euler;
             }
         }
-        CheckGroundBounds();
+
+        groundCheckTimer += Time.deltaTime;
+        if (groundCheckTimer >= GROUND_CHECK_INTERVAL)
+        {
+            groundCheckTimer = 0f;
+            CheckGroundBounds();
+        }
+
         ManageThrusterEnergy();
     }
 
@@ -146,7 +156,7 @@ public partial class PlaneControl : MonoBehaviour
             rb.MoveRotation(baseRotation);
         }
 
-        ApplyFlightForces();
+        ApplyFlightForces(baseRotation);
     }
 
 
@@ -215,14 +225,18 @@ public partial class PlaneControl : MonoBehaviour
         return Quaternion.Euler(euler);
     }
 
-    void ApplyFlightForces()
+    void ApplyFlightForces(Quaternion rotation)
     {
         float speedFactor = Mathf.Clamp(currentSpeed * 0.02f, 0f, 0.5f);
-        // Bolt: Optimized - replaced Vector3.Dot(transform.forward, Vector3.up) with transform.forward.y
-        float pitchAngle = transform.forward.y;
+
+        // Bolt: Optimized - derive vectors from the rotation already fetched in FixedUpdate
+        // to eliminate multiple native property calls (transform.forward, transform.up).
+        Vector3 forward = rotation * Vector3.forward;
+        Vector3 up = rotation * Vector3.up;
+        float pitchAngle = forward.y;
 
         if(pitchAngle > -0.2f && currentSpeed > 15f)
-            rb.AddForce(transform.up * liftPower * speedFactor, ForceMode.Acceleration);
+            rb.AddForce(up * liftPower * speedFactor, ForceMode.Acceleration);
 
         if(currentSpeed < 60f)
             rb.AddForce(Vector3.down * fallMultiplier * 10f, ForceMode.Acceleration);
@@ -231,7 +245,6 @@ public partial class PlaneControl : MonoBehaviour
         else
             rb.AddForce(-Physics.gravity * gravityMultiplier, ForceMode.Acceleration);
 
-        Vector3 forward = transform.forward;
         bool speedChanged = !Mathf.Approximately(currentSpeed, lastSpeed);
         bool forwardChanged = (forward - lastForward).sqrMagnitude > 1e-6f;
         if (speedChanged || forwardChanged)
@@ -261,6 +274,8 @@ public partial class PlaneControl : MonoBehaviour
             {
                 isFlipping = false;
                 currentFlipProgress = 0f;
+                if (planeCamera != null)
+                    planeCamera.localRotation = cameraOriginalLocalRotation;
             }
         }
     }

@@ -15,6 +15,8 @@ public class WinningPopUp : MonoBehaviour
     public float winCheckDelay = 3f;
 
     private Coroutine blinkCoroutine;
+    private float winCheckTimer = 0f;
+    private const float WIN_CHECK_INTERVAL = 0.2f;
 
     void Awake()
     {
@@ -43,12 +45,17 @@ public class WinningPopUp : MonoBehaviour
     void Update()
     {
         // Don't check for win until after initial spawn / intro delay
-        if (Time.timeSinceLevelLoad < winCheckDelay)
+        if (isActive || Time.timeSinceLevelLoad < winCheckDelay)
             return;
 
-        if (!isActive && AreAllEnemiesDestroyed())
+        winCheckTimer += Time.deltaTime;
+        if (winCheckTimer >= WIN_CHECK_INTERVAL)
         {
-            ActivateWinningPopup();
+            winCheckTimer = 0f;
+            if (AreAllEnemiesDestroyed())
+            {
+                ActivateWinningPopup();
+            }
         }
     }
 
@@ -61,12 +68,15 @@ public class WinningPopUp : MonoBehaviour
             return false;
 
         var activeEnemyShips = GameManager.Instance.GetActiveEnemyShips();
-        if (activeEnemyShips != null && activeEnemyShips.Count > 0)
+        if (activeEnemyShips != null)
         {
-            activeEnemyShips.RemoveAll(ship => ship == null);
-            
-            if (activeEnemyShips.Count > 0)
-                return false;
+            // Bolt: Optimized - use a non-modifying loop that returns false as soon as a non-null active enemy is found,
+            // avoiding the expensive RemoveAll call on the global list.
+            for (int i = 0; i < activeEnemyShips.Count; i++)
+            {
+                if (activeEnemyShips[i] != null)
+                    return false;
+            }
         }
 
         return true;
