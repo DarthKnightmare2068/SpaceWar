@@ -42,9 +42,14 @@ public class SpeedDisplay : MonoBehaviour
     private void UpdateSpeedDisplay()
     {
         if (speedText != null && currentPlayer != null)
-            speedText.text = $"Speed: {currentPlayer.currentSpeed:F0}";
+        {
+            // Bolt: Optimized - use SetText with int to avoid string allocation from interpolation
+            speedText.SetText("Speed: {0}", Mathf.RoundToInt(currentPlayer.currentSpeed));
+        }
         else if (speedText != null)
+        {
             speedText.text = "Speed: --";
+        }
     }
 
     private void HandlePlayerChanged(GameObject player)
