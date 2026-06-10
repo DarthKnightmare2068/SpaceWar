@@ -25,7 +25,9 @@ public class FPSDisplay : MonoBehaviour
     {
         if(fpsText != null && GameManager.Instance != null)
         {
-            fpsText.text = "FPS: " + GameManager.Instance.GetCurrentFPSString();
+            // Bolt: Optimized - replaced string concatenation with TextMeshPro's non-allocating
+            // SetText overload to eliminate periodic heap allocations in the UI update path.
+            fpsText.SetText("FPS: {0:0}", GameManager.Instance.GetCurrentFPS());
         }
     }
 }

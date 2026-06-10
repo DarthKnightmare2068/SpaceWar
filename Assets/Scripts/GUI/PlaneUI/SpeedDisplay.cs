@@ -42,9 +42,15 @@ public class SpeedDisplay : MonoBehaviour
     private void UpdateSpeedDisplay()
     {
         if (speedText != null && currentPlayer != null)
-            speedText.text = $"Speed: {currentPlayer.currentSpeed:F0}";
+        {
+            // Bolt: Optimized - replaced string interpolation with TextMeshPro's non-allocating
+            // SetText overload to eliminate periodic heap allocations in the UI update path.
+            speedText.SetText("Speed: {0:0}", currentPlayer.currentSpeed);
+        }
         else if (speedText != null)
+        {
             speedText.text = "Speed: --";
+        }
     }
 
     private void HandlePlayerChanged(GameObject player)

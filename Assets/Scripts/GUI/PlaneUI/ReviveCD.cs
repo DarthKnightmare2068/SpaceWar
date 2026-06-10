@@ -16,7 +16,11 @@ public class ReviveCD : MonoBehaviour
     public void SetCountdown(float seconds)
     {
         if (text != null)
-            text.text = $"Revive in: {Mathf.CeilToInt(seconds)}";
+        {
+            // Bolt: Optimized - replaced string interpolation with TextMeshPro's non-allocating
+            // SetText overload to eliminate periodic heap allocations.
+            text.SetText("Revive in: {0}", Mathf.CeilToInt(seconds));
+        }
     }
 
     public void ShowRevived()

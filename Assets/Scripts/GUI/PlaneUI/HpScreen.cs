@@ -8,6 +8,7 @@ public class HpScreen : MonoBehaviour
     private Volume volume;
     private Vignette vignette;
     private PlaneStats lastPlaneStats;
+    private float lastIntensity = -1f;
 
     void Awake()
     {
@@ -42,7 +43,14 @@ public class HpScreen : MonoBehaviour
         else
             intensity = 0f;
 
-        vignette.intensity.value = Mathf.Clamp01(intensity);
+        // Bolt: Optimized - implemented change-detection guard to avoid redundant native-to-managed
+        // Post-Processing property writes every frame when health is stable.
+        intensity = Mathf.Clamp01(intensity);
+        if (Mathf.Abs(intensity - lastIntensity) > 1e-4f)
+        {
+            vignette.intensity.value = intensity;
+            lastIntensity = intensity;
+        }
     }
 
     private void TryBindPlayer()
@@ -60,6 +68,7 @@ public class HpScreen : MonoBehaviour
         if (planeStats != lastPlaneStats && vignette != null)
         {
             vignette.intensity.value = 0f;
+            lastIntensity = 0f;
             lastPlaneStats = planeStats;
         }
     }
