@@ -13,8 +13,11 @@ public class WinningPopUp : MonoBehaviour
     public bool isActive = false;
     [Tooltip("Seconds after scene load before win detection is allowed")]
     public float winCheckDelay = 3f;
+    [Tooltip("Frequency of victory condition checks (in seconds). ~5Hz is plenty.")]
+    public float winCheckInterval = 0.2f;
 
     private Coroutine blinkCoroutine;
+    private float lastWinCheckTime = 0f;
 
     void Awake()
     {
@@ -42,13 +45,20 @@ public class WinningPopUp : MonoBehaviour
 
     void Update()
     {
+        if (isActive) return;
+
         // Don't check for win until after initial spawn / intro delay
         if (Time.timeSinceLevelLoad < winCheckDelay)
             return;
 
-        if (!isActive && AreAllEnemiesDestroyed())
+        // Bolt: Optimized - throttle the win check to save CPU cycles
+        if (Time.time >= lastWinCheckTime + winCheckInterval)
         {
-            ActivateWinningPopup();
+            lastWinCheckTime = Time.time;
+            if (AreAllEnemiesDestroyed())
+            {
+                ActivateWinningPopup();
+            }
         }
     }
 
@@ -61,12 +71,15 @@ public class WinningPopUp : MonoBehaviour
             return false;
 
         var activeEnemyShips = GameManager.Instance.GetActiveEnemyShips();
-        if (activeEnemyShips != null && activeEnemyShips.Count > 0)
+        if (activeEnemyShips != null)
         {
-            activeEnemyShips.RemoveAll(ship => ship == null);
-            
-            if (activeEnemyShips.Count > 0)
-                return false;
+            // Bolt: Optimized - use a non-modifying loop with early exit to avoid per-frame allocations
+            // and prevent unintended mutation of the global list.
+            for (int i = 0; i < activeEnemyShips.Count; i++)
+            {
+                if (activeEnemyShips[i] != null)
+                    return false;
+            }
         }
 
         return true;
