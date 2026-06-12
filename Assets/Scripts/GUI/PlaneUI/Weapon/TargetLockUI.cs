@@ -285,7 +285,12 @@ public partial class TargetLockUI : MonoBehaviour
                     laserRangeText.enabled = !laserRangeText.enabled;
                     blinkTimer = 0f;
                 }
-                laserRangeText.text = "Laser in Fire Range!";
+
+                // Bolt: Optimized - only set text if it's different to avoid native property writes
+                if (laserRangeText.text != "Laser in Fire Range!")
+                {
+                    laserRangeText.text = "Laser in Fire Range!";
+                }
             }
             else
             {

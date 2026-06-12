@@ -533,12 +533,6 @@ public class GameManager : MonoBehaviour
         return dt > 0f ? 1f / dt : 0f;
     }
 
-    public string GetCurrentFPSString()
-    {
-        float fps = GetCurrentFPS();
-        return Mathf.Round(fps).ToString();
-    }
-
     private IEnumerable<SideShipSpawnRequest> GetSideShipSpawnRequests(GameObject boss)
     {
         if (boss == null)
