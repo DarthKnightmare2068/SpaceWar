@@ -15,10 +15,17 @@ public abstract class DualSliderBar : MonoBehaviour
     {
         if (normalHealthBarSlider != null)
             normalHealthBarSlider.value = normalizedValue;
+
         if (easeHealthBarSlider != null && normalHealthBarSlider != null &&
             easeHealthBarSlider.value != normalHealthBarSlider.value)
         {
-            easeHealthBarSlider.value = Mathf.Lerp(easeHealthBarSlider.value, normalHealthBarSlider.value, lerpSpeed);
+            float nextValue = Mathf.Lerp(easeHealthBarSlider.value, normalHealthBarSlider.value, lerpSpeed);
+
+            // Bolt: Optimized - epsilon snapping to stop near-zero lerps and reduce per-frame UI writes
+            if (Mathf.Abs(nextValue - normalHealthBarSlider.value) < 0.001f)
+                nextValue = normalHealthBarSlider.value;
+
+            easeHealthBarSlider.value = nextValue;
         }
     }
 
