@@ -15,8 +15,8 @@ public class ExpBar : MonoBehaviour
     private const float SEARCH_INTERVAL = 1f;
 
     private int lastLevel = -1;
-    private int lastExp = -1;
-    private int lastExpToNext = -1;
+    private float lastRawExp = -1f;
+    private float lastRawExpToNext = -1f;
     private bool lastWasMaxLevel = false;
 
     void Start()
@@ -60,41 +60,62 @@ public class ExpBar : MonoBehaviour
                 searchTimer = 0f;
                 FindLevelUpSystem();
             }
+
+            if (levelUpSystem == null)
+            {
+                if (expSlider != null && expSlider.value != 0)
+                    expSlider.value = 0;
+                if (levelText != null && lastLevel != -1)
+                {
+                    lastLevel = -1;
+                    levelText.text = "Current Level: ---";
+                }
+                return;
+            }
         }
 
-        if (levelUpSystem != null)
+        // Bolt: Optimized - centralized change detection and non-allocating text updates
+        bool isMax = levelUpSystem.IsMaxLevel;
+        int level = levelUpSystem.CurrentLevel;
+        float currentExp = levelUpSystem.CurrentExp;
+        float expToNext = levelUpSystem.ExpToNextLevel;
+
+        bool rawChanged = isMax != lastWasMaxLevel ||
+                          level != lastLevel ||
+                          !Mathf.Approximately(currentExp, lastRawExp) ||
+                          !Mathf.Approximately(expToNext, lastRawExpToNext);
+
+        if (rawChanged)
         {
-            bool isMax = levelUpSystem.IsMaxLevel;
-            int level = levelUpSystem.CurrentLevel;
-            int exp = Mathf.CeilToInt(levelUpSystem.CurrentExp);
-            int expToNext = Mathf.CeilToInt(levelUpSystem.ExpToNextLevel);
-
             if (expSlider != null)
-                expSlider.value = isMax ? 1f : ((expToNext > 0) ? (levelUpSystem.CurrentExp / levelUpSystem.ExpToNextLevel) : 0);
+                expSlider.value = isMax ? 1f : ((expToNext > 0) ? (currentExp / expToNext) : 0);
 
-            if (levelText != null)
+            int displayExp = Mathf.CeilToInt(currentExp);
+            int displayExpToNext = Mathf.CeilToInt(expToNext);
+
+            // Bolt: Throttled text updates to integer-only changes to avoid redundant mesh rebuilds.
+            bool displayChanged = isMax != lastWasMaxLevel ||
+                                 level != lastLevel ||
+                                 displayExp != Mathf.CeilToInt(lastRawExp) ||
+                                 displayExpToNext != Mathf.CeilToInt(lastRawExpToNext);
+
+            if (displayChanged && levelText != null)
             {
-                if (isMax != lastWasMaxLevel || level != lastLevel || exp != lastExp || expToNext != lastExpToNext)
+                if (isMax)
                 {
-                    lastWasMaxLevel = isMax;
-                    lastLevel = level;
-                    lastExp = exp;
-                    lastExpToNext = expToNext;
-                    levelText.text = isMax
-                        ? $"Current Level {level}: MAX"
-                        : $"Current Level {level}: {exp} / {expToNext}";
+                    levelText.SetText("Current Level {0}: MAX", level);
+                }
+                else
+                {
+                    // Bolt: Optimized - use SetText with format specifiers to ensure integer display and avoid GC allocations.
+                    levelText.SetText("Current Level {0:0}: {1:0} / {2:0}", (float)level, (float)displayExp, (float)displayExpToNext);
                 }
             }
-        }
-        else
-        {
-            if (expSlider != null)
-                expSlider.value = 0;
-            if (levelText != null && lastLevel != -1)
-            {
-                lastLevel = -1;
-                levelText.text = "Current Level: ---";
-            }
+
+            lastWasMaxLevel = isMax;
+            lastLevel = level;
+            lastRawExp = currentExp;
+            lastRawExpToNext = expToNext;
         }
     }
 
