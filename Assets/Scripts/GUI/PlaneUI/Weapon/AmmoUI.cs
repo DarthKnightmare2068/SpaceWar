@@ -19,6 +19,11 @@ public class AmmoUI : MonoBehaviour
     private int lastMissiles = -1;
     private int lastMaxMissiles = -1;
 
+    // Bolt: Optimized - throttle UI updates to 10Hz
+    private float throttleTimer = 0f;
+    private const float UPDATE_INTERVAL = 0.1f;
+    private bool uiResetDone = false;
+
     private void OnEnable()
     {
         GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
@@ -41,11 +46,18 @@ public class AmmoUI : MonoBehaviour
             return;
         }
 
-        UpdateAmmoUI();
+        throttleTimer += Time.unscaledDeltaTime;
+        if (throttleTimer >= UPDATE_INTERVAL)
+        {
+            throttleTimer = 0f;
+            UpdateAmmoUI();
+        }
     }
 
     private void UpdateAmmoUI()
     {
+        uiResetDone = false;
+
         if (machineGunAmmoText != null && showText)
         {
             int curBullets = weaponManager.GetCurrentBullets();
@@ -53,7 +65,12 @@ public class AmmoUI : MonoBehaviour
             bool infinite = weaponManager.isInfinite;
             if (infinite != lastIsInfinite || curBullets != lastBullets || maxBullets != lastMaxBullets)
             {
-                machineGunAmmoText.text = infinite ? ("inf / " + maxBullets) : (curBullets + " / " + maxBullets);
+                // Bolt: Optimized - use SetText to avoid string allocations
+                if (infinite)
+                    machineGunAmmoText.SetText("inf / {0}", maxBullets);
+                else
+                    machineGunAmmoText.SetText("{0} / {1}", curBullets, maxBullets);
+
                 lastBullets = curBullets;
                 lastMaxBullets = maxBullets;
                 lastIsInfinite = infinite;
@@ -66,7 +83,8 @@ public class AmmoUI : MonoBehaviour
             int maxMissiles = weaponManager.maxMissiles;
             if (curMissiles != lastMissiles || maxMissiles != lastMaxMissiles)
             {
-                missileAmmoText.text = curMissiles + " / " + maxMissiles;
+                // Bolt: Optimized - use SetText to avoid string allocations
+                missileAmmoText.SetText("{0} / {1}", curMissiles, maxMissiles);
                 lastMissiles = curMissiles;
                 lastMaxMissiles = maxMissiles;
             }
@@ -81,6 +99,9 @@ public class AmmoUI : MonoBehaviour
 
     private void ResetAmmoUI()
     {
+        // Bolt: Optimized - only reset UI once when weaponManager is missing
+        if (uiResetDone) return;
+
         if (machineGunAmmoText != null && showText)
             machineGunAmmoText.text = "-- / --";
 
@@ -92,5 +113,6 @@ public class AmmoUI : MonoBehaviour
         lastIsInfinite = false;
         lastMissiles = -1;
         lastMaxMissiles = -1;
+        uiResetDone = true;
     }
 }
