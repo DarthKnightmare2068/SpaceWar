@@ -29,6 +29,8 @@ public class MainBossStats : HealthBase, ITargetable
         _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
         UpdateShieldStatus();
         nextSideShipRespawnIndex = 0;
+        // Bolt: Optimized - initial check for side ship respawn
+        CheckSideShipRespawnByHP();
     }
 
     public void TrackSideShip(EnemyStats sideShip)
@@ -44,13 +46,14 @@ public class MainBossStats : HealthBase, ITargetable
     {
         _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
         UpdateShieldStatus();
+        // Bolt: Optimized - check if threshold for respawn was met now that ships are destroyed
+        CheckSideShipRespawnByHP();
     }
 
     void Update()
     {
-        CheckWeaponRespawnByHP();
-        CheckSideShipRespawnByHP();
-
+        // Bolt: Optimized - removed HP-based checks from Update to reduce per-frame overhead.
+        // These are now event-driven and run inside OnDamageTaken and OnSideShipDied.
         EnemyStats.TickForceRespawnTimer(weaponDmgControl, ref forceRespawnTimer, FORCE_RESPAWN_DELAY);
     }
 
@@ -64,6 +67,9 @@ public class MainBossStats : HealthBase, ITargetable
     protected override void OnDamageTaken(float amount)
     {
         forceRespawnTimer = -1f;
+        // Bolt: Optimized - HP-based checks moved from Update to OnDamageTaken
+        CheckWeaponRespawnByHP();
+        CheckSideShipRespawnByHP();
     }
 
     protected override void OnDeath()
