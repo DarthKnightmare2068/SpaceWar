@@ -29,6 +29,9 @@ public class MainBossStats : HealthBase, ITargetable
         _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
         UpdateShieldStatus();
         nextSideShipRespawnIndex = 0;
+
+        CheckWeaponRespawnByHP();
+        CheckSideShipRespawnByHP();
     }
 
     public void TrackSideShip(EnemyStats sideShip)
@@ -44,13 +47,11 @@ public class MainBossStats : HealthBase, ITargetable
     {
         _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
         UpdateShieldStatus();
+        CheckSideShipRespawnByHP();
     }
 
     void Update()
     {
-        CheckWeaponRespawnByHP();
-        CheckSideShipRespawnByHP();
-
         EnemyStats.TickForceRespawnTimer(weaponDmgControl, ref forceRespawnTimer, FORCE_RESPAWN_DELAY);
     }
 
@@ -64,6 +65,8 @@ public class MainBossStats : HealthBase, ITargetable
     protected override void OnDamageTaken(float amount)
     {
         forceRespawnTimer = -1f;
+        CheckWeaponRespawnByHP();
+        CheckSideShipRespawnByHP();
     }
 
     protected override void OnDeath()
