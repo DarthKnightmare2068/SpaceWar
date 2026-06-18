@@ -17,10 +17,10 @@ public class MainBossStats : HealthBase, ITargetable
     private const float HP_THRESHOLD_STEP = 100000f;
     private readonly float[] sideShipRespawnThresholds = { 250000f, HP_THRESHOLD_STEP };
     private int nextSideShipRespawnIndex;
-    private bool lastShieldActive = true;
 
     // Cached so CheckSideShipRespawnByHP() reads a bool instead of iterating every frame.
     private bool _allSideShipsDestroyed = true;
+    private List<EnemyStats> _sideShipStats = new List<EnemyStats>();
 
     void Start()
     {
@@ -29,14 +29,19 @@ public class MainBossStats : HealthBase, ITargetable
         _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
         UpdateShieldStatus();
         nextSideShipRespawnIndex = 0;
+
+        CheckWeaponRespawnByHP();
+        CheckSideShipRespawnByHP();
     }
 
     public void TrackSideShip(EnemyStats sideShip)
     {
         if (sideShip != null)
         {
+            _sideShipStats.Add(sideShip);
             sideShip.onDeath.AddListener(OnSideShipDied);
             _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
+            UpdateShieldStatus();
         }
     }
 
@@ -44,13 +49,11 @@ public class MainBossStats : HealthBase, ITargetable
     {
         _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
         UpdateShieldStatus();
+        CheckSideShipRespawnByHP();
     }
 
     void Update()
     {
-        CheckWeaponRespawnByHP();
-        CheckSideShipRespawnByHP();
-
         EnemyStats.TickForceRespawnTimer(weaponDmgControl, ref forceRespawnTimer, FORCE_RESPAWN_DELAY);
     }
 
@@ -64,6 +67,8 @@ public class MainBossStats : HealthBase, ITargetable
     protected override void OnDamageTaken(float amount)
     {
         forceRespawnTimer = -1f;
+        CheckWeaponRespawnByHP();
+        CheckSideShipRespawnByHP();
     }
 
     protected override void OnDeath()
@@ -75,10 +80,15 @@ public class MainBossStats : HealthBase, ITargetable
 
     private bool ComputeAllSideShipsDestroyed()
     {
-        if (GameManager.Instance == null) return true;
-        foreach (var ship in GameManager.Instance.GetActiveEnemyShips())
+        for (int i = _sideShipStats.Count - 1; i >= 0; i--)
         {
-            if (ship != null && ship.GetComponent<EnemyStats>() is EnemyStats s && s.CurrentHP > 0)
+            if (_sideShipStats[i] == null)
+            {
+                _sideShipStats.RemoveAt(i);
+                continue;
+            }
+
+            if (_sideShipStats[i].CurrentHP > 0)
                 return false;
         }
         return true;
@@ -93,8 +103,6 @@ public class MainBossStats : HealthBase, ITargetable
     {
         if (bossShield != null && bossShield.activeSelf != active)
             bossShield.SetActive(active);
-
-        lastShieldActive = active;
     }
 
     private void CheckWeaponRespawnByHP()
