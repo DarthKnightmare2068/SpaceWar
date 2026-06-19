@@ -13,6 +13,19 @@ public static class DamageHelper
         if (hittable == null) return false;
         hittable.TakeDamage(damage);
         DmgPopUp.ShowDamage(hitPoint, (int)damage, popupColor);
+
+        // Bolt: Optimized - centralized experience and score gain. By moving this from LevelUpSystem's
+        // per-frame polling to an event-driven call here, we eliminate all damage-tracking Update overhead.
+        // We filter for "Enemy" and "Turret" tags to ensure XP/Score is only granted for valid targets.
+        if (col.CompareTag("Enemy") || col.CompareTag("Turret"))
+        {
+            if (LevelUpSystem.Instance != null)
+                LevelUpSystem.Instance.AddDamageExperience(damage);
+
+            if (ScoreCounting.Instance != null)
+                ScoreCounting.Instance.RecordDamageDealt(damage);
+        }
+
         return true;
     }
 
@@ -22,6 +35,17 @@ public static class DamageHelper
         var hittable = col.GetComponentInParent<IHittable>();
         if (hittable == null) return false;
         hittable.TakeDamage(damage);
+
+        // Bolt: Optimized - centralized experience and score gain.
+        if (col.CompareTag("Enemy") || col.CompareTag("Turret"))
+        {
+            if (LevelUpSystem.Instance != null)
+                LevelUpSystem.Instance.AddDamageExperience(damage);
+
+            if (ScoreCounting.Instance != null)
+                ScoreCounting.Instance.RecordDamageDealt(damage);
+        }
+
         return true;
     }
 }
