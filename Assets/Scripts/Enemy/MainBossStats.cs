@@ -21,6 +21,7 @@ public class MainBossStats : HealthBase, ITargetable
 
     // Cached so CheckSideShipRespawnByHP() reads a bool instead of iterating every frame.
     private bool _allSideShipsDestroyed = true;
+    private List<EnemyStats> _sideShipStats = new List<EnemyStats>();
 
     void Start()
     {
@@ -36,6 +37,9 @@ public class MainBossStats : HealthBase, ITargetable
         if (sideShip != null)
         {
             sideShip.onDeath.AddListener(OnSideShipDied);
+            // Bolt: Maintain local cache to avoid per-frame GetComponent lookups in ComputeAllSideShipsDestroyed
+            _sideShipStats.RemoveAll(s => s == null);
+            _sideShipStats.Add(sideShip);
             _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
         }
     }
@@ -44,14 +48,15 @@ public class MainBossStats : HealthBase, ITargetable
     {
         _allSideShipsDestroyed = ComputeAllSideShipsDestroyed();
         UpdateShieldStatus();
+        // Bolt: Optimized - check for side ship respawn if the boss is already below threshold when ships die
+        CheckSideShipRespawnByHP();
     }
 
     void Update()
     {
-        CheckWeaponRespawnByHP();
-        CheckSideShipRespawnByHP();
-
-        EnemyStats.TickForceRespawnTimer(weaponDmgControl, ref forceRespawnTimer, FORCE_RESPAWN_DELAY);
+        // Bolt: Optimized - HP-based checks moved to event-driven OnDamageTaken and OnSideShipDied
+        if (weaponDmgControl != null)
+            EnemyStats.TickForceRespawnTimer(weaponDmgControl, ref forceRespawnTimer, FORCE_RESPAWN_DELAY);
     }
 
     protected override bool CanTakeDamage()
@@ -64,6 +69,9 @@ public class MainBossStats : HealthBase, ITargetable
     protected override void OnDamageTaken(float amount)
     {
         forceRespawnTimer = -1f;
+        // Bolt: Optimized - perform HP-based checks only when damage is actually taken
+        CheckWeaponRespawnByHP();
+        CheckSideShipRespawnByHP();
     }
 
     protected override void OnDeath()
@@ -75,10 +83,11 @@ public class MainBossStats : HealthBase, ITargetable
 
     private bool ComputeAllSideShipsDestroyed()
     {
-        if (GameManager.Instance == null) return true;
-        foreach (var ship in GameManager.Instance.GetActiveEnemyShips())
+        // Bolt: Optimized - iterate over cached stats to avoid GetComponent and GameManager list access
+        for (int i = 0; i < _sideShipStats.Count; i++)
         {
-            if (ship != null && ship.GetComponent<EnemyStats>() is EnemyStats s && s.CurrentHP > 0)
+            var s = _sideShipStats[i];
+            if (s != null && s.CurrentHP > 0)
                 return false;
         }
         return true;
@@ -114,6 +123,8 @@ public class MainBossStats : HealthBase, ITargetable
         if (nextSideShipRespawnIndex >= sideShipRespawnThresholds.Length) return;
         if (currentHP <= sideShipRespawnThresholds[nextSideShipRespawnIndex] && AreAllSideShipsDestroyed())
         {
+            // Bolt: Clear cached references before respawning to keep list size stable
+            _sideShipStats.Clear();
             GameManager.Instance?.RespawnEnemySideShips();
             SetShieldActive(true);
             nextSideShipRespawnIndex++;

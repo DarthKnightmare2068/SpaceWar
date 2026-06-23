@@ -36,7 +36,9 @@ public class EnemyStats : HealthBase, ITargetable
 
     void Update()
     {
-        TickForceRespawnTimer(weaponDmgControl, ref forceRespawnTimer, FORCE_RESPAWN_DELAY);
+        // Bolt: Optimized - only call timer logic if this enemy actually has a weapon system to manage
+        if (weaponDmgControl != null)
+            TickForceRespawnTimer(weaponDmgControl, ref forceRespawnTimer, FORCE_RESPAWN_DELAY);
     }
 
     // Shared between EnemyStats and MainBossStats — kept as a static helper rather than baked into
