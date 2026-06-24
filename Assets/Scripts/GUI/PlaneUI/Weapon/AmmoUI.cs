@@ -20,16 +20,33 @@ public class AmmoUI : MonoBehaviour
     private int lastMaxMissiles = -1;
     private bool uiResetDone = false;
 
+    private Color originalMGColor;
+    private Color originalMissileColor;
+    private bool colorsCached = false;
+
     private float timeSinceLastUpdate = 0f;
     private const float UPDATE_INTERVAL = 0.1f;
 
     private void OnEnable()
     {
+        CacheOriginalColors();
         GameEntityRegistry.PlayerChanged += HandlePlayerChanged;
         if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
             HandlePlayerChanged(player);
         else
             HandlePlayerChanged(null);
+    }
+
+    private void CacheOriginalColors()
+    {
+        if (colorsCached) return;
+
+        if (machineGunAmmoText != null)
+            originalMGColor = machineGunAmmoText.color;
+        if (missileAmmoText != null)
+            originalMissileColor = missileAmmoText.color;
+
+        colorsCached = true;
     }
 
     private void OnDisable()
@@ -63,20 +80,39 @@ public class AmmoUI : MonoBehaviour
         uiResetDone = false;
         if (machineGunAmmoText != null && showText)
         {
-            int curBullets = weaponManager.GetCurrentBullets();
-            int maxBullets = weaponManager.maxBullets;
-            bool infinite = weaponManager.isInfinite;
-            if (infinite != lastIsInfinite || curBullets != lastBullets || maxBullets != lastMaxBullets)
+            if (weaponManager.isReloading)
             {
-                // Bolt: Optimized - use SetText to avoid string allocations from concatenation
-                if (infinite)
-                    machineGunAmmoText.SetText("inf / {0}", maxBullets);
-                else
-                    machineGunAmmoText.SetText("{0} / {1}", curBullets, maxBullets);
+                machineGunAmmoText.SetText("RELOADING...");
+                machineGunAmmoText.color = new Color(1f, 0.7f, 0f); // Amber
+                lastBullets = -2; // Force refresh when reloading ends
+            }
+            else
+            {
+                int curBullets = weaponManager.GetCurrentBullets();
+                int maxBullets = weaponManager.maxBullets;
+                bool infinite = weaponManager.isInfinite;
 
-                lastBullets = curBullets;
-                lastMaxBullets = maxBullets;
-                lastIsInfinite = infinite;
+                if (infinite != lastIsInfinite || curBullets != lastBullets || maxBullets != lastMaxBullets)
+                {
+                    // Bolt: Optimized - use SetText to avoid string allocations from concatenation
+                    if (infinite)
+                    {
+                        machineGunAmmoText.SetText("inf / {0}", maxBullets);
+                        machineGunAmmoText.color = originalMGColor;
+                    }
+                    else
+                    {
+                        machineGunAmmoText.SetText("{0} / {1}", curBullets, maxBullets);
+                        if (curBullets <= maxBullets * 0.25f)
+                            machineGunAmmoText.color = Color.red;
+                        else
+                            machineGunAmmoText.color = originalMGColor;
+                    }
+
+                    lastBullets = curBullets;
+                    lastMaxBullets = maxBullets;
+                    lastIsInfinite = infinite;
+                }
             }
         }
 
@@ -88,6 +124,12 @@ public class AmmoUI : MonoBehaviour
             {
                 // Bolt: Optimized - use SetText to avoid string allocations
                 missileAmmoText.SetText("{0} / {1}", curMissiles, maxMissiles);
+
+                if (curMissiles == 0)
+                    missileAmmoText.color = Color.red;
+                else
+                    missileAmmoText.color = originalMissileColor;
+
                 lastMissiles = curMissiles;
                 lastMaxMissiles = maxMissiles;
             }
@@ -105,10 +147,16 @@ public class AmmoUI : MonoBehaviour
         if (uiResetDone) return;
 
         if (machineGunAmmoText != null && showText)
+        {
             machineGunAmmoText.text = "-- / --";
+            if (colorsCached) machineGunAmmoText.color = originalMGColor;
+        }
 
         if (missileAmmoText != null && showText)
+        {
             missileAmmoText.text = "-- / --";
+            if (colorsCached) missileAmmoText.color = originalMissileColor;
+        }
 
         lastBullets = -1;
         lastMaxBullets = -1;
