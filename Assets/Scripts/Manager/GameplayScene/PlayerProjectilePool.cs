@@ -16,9 +16,12 @@ public class PlayerProjectilePool : MonoBehaviour
 
     private Queue<PooledProjectile> bulletPool = new Queue<PooledProjectile>();
     private Queue<PooledProjectile> missilePool = new Queue<PooledProjectile>();
-    
-    private List<PooledProjectile> activeBullets = new List<PooledProjectile>();
-    private List<PooledProjectile> activeMissiles = new List<PooledProjectile>();
+
+    // Bolt: Intrusive linked lists for O(1) active projectile management
+    private PooledProjectile bulletHead = null;
+    private PooledProjectile bulletTail = null;
+    private PooledProjectile missileHead = null;
+    private PooledProjectile missileTail = null;
 
     private Transform bulletContainer;
     private Transform missileContainer;
@@ -48,36 +51,15 @@ public class PlayerProjectilePool : MonoBehaviour
     void Update()
     {
         float now = Time.time;
-        // Bolt: Optimized - pass current time to avoid multiple Time.time calls per frame
-        ReturnExpiredProjectiles(activeBullets, bulletPool, now);
-        ReturnExpiredProjectiles(activeMissiles, missilePool, now);
-    }
-
-    private void ReturnExpiredProjectiles(List<PooledProjectile> activeList, Queue<PooledProjectile> pool, float now)
-    {
         // Bolt: Optimized - chronological order allows early exit for expired checks
-        for (int i = 0; i < activeList.Count; i++)
+        while (bulletHead != null && now >= bulletHead.expireAt)
         {
-            PooledProjectile projectile = activeList[i];
-            if (projectile == null || projectile.gameObject == null)
-            {
-                activeList.RemoveAt(i);
-                i--;
-                continue;
-            }
+            ReturnBullet(bulletHead);
+        }
 
-            if (projectile.IsExpired(now))
-            {
-                ReturnToPool(projectile, pool, projectile.transform.parent);
-                activeList.RemoveAt(i);
-                i--;
-            }
-            else
-            {
-                // Since projectiles are added in chronological order, if this one isn't expired,
-                // the ones after it won't be either.
-                break;
-            }
+        while (missileHead != null && now >= missileHead.expireAt)
+        {
+            ReturnMissile(missileHead);
         }
     }
 
@@ -176,7 +158,7 @@ public class PlayerProjectilePool : MonoBehaviour
         pooled.gameObject.SetActive(true);
 
         pooled.Activate(lifetime);
-        activeBullets.Add(pooled);
+        AddBulletToActiveList(pooled);
 
         if (pooled.CachedRigidbody != null)
         {
@@ -208,7 +190,7 @@ public class PlayerProjectilePool : MonoBehaviour
         pooled.gameObject.SetActive(true);
 
         pooled.Activate(lifetime);
-        activeMissiles.Add(pooled);
+        AddMissileToActiveList(pooled);
 
         if (pooled.CachedRigidbody != null)
         {
@@ -226,13 +208,20 @@ public class PlayerProjectilePool : MonoBehaviour
         PooledProjectile pooled = bulletObj.GetComponent<PooledProjectile>();
         if (pooled != null)
         {
-            activeBullets.Remove(pooled);
-            ReturnToPool(pooled, bulletPool, bulletContainer);
+            ReturnBullet(pooled);
         }
         else
         {
             Destroy(bulletObj);
         }
+    }
+
+    public void ReturnBullet(PooledProjectile pooled)
+    {
+        if (pooled == null || !pooled.isActive) return;
+
+        RemoveBulletFromActiveList(pooled);
+        ReturnToPool(pooled, bulletPool, bulletContainer);
     }
 
     public void ReturnMissile(GameObject missileObj)
@@ -242,8 +231,7 @@ public class PlayerProjectilePool : MonoBehaviour
         PooledProjectile pooled = missileObj.GetComponent<PooledProjectile>();
         if (pooled != null)
         {
-            activeMissiles.Remove(pooled);
-            ReturnToPool(pooled, missilePool, missileContainer);
+            ReturnMissile(pooled);
         }
         else
         {
@@ -251,10 +239,73 @@ public class PlayerProjectilePool : MonoBehaviour
         }
     }
 
+    public void ReturnMissile(PooledProjectile pooled)
+    {
+        if (pooled == null || !pooled.isActive) return;
+
+        RemoveMissileFromActiveList(pooled);
+        ReturnToPool(pooled, missilePool, missileContainer);
+    }
+
+    private void AddBulletToActiveList(PooledProjectile pooled)
+    {
+        if (bulletTail == null)
+        {
+            bulletHead = bulletTail = pooled;
+            pooled.Next = pooled.Prev = null;
+        }
+        else
+        {
+            bulletTail.Next = pooled;
+            pooled.Prev = bulletTail;
+            pooled.Next = null;
+            bulletTail = pooled;
+        }
+    }
+
+    private void RemoveBulletFromActiveList(PooledProjectile pooled)
+    {
+        if (pooled.Prev != null) pooled.Prev.Next = pooled.Next;
+        if (pooled.Next != null) pooled.Next.Prev = pooled.Prev;
+
+        if (bulletHead == pooled) bulletHead = pooled.Next;
+        if (bulletTail == pooled) bulletTail = pooled.Prev;
+
+        pooled.Next = pooled.Prev = null;
+    }
+
+    private void AddMissileToActiveList(PooledProjectile pooled)
+    {
+        if (missileTail == null)
+        {
+            missileHead = missileTail = pooled;
+            pooled.Next = pooled.Prev = null;
+        }
+        else
+        {
+            missileTail.Next = pooled;
+            pooled.Prev = missileTail;
+            pooled.Next = null;
+            missileTail = pooled;
+        }
+    }
+
+    private void RemoveMissileFromActiveList(PooledProjectile pooled)
+    {
+        if (pooled.Prev != null) pooled.Prev.Next = pooled.Next;
+        if (pooled.Next != null) pooled.Next.Prev = pooled.Prev;
+
+        if (missileHead == pooled) missileHead = pooled.Next;
+        if (missileTail == pooled) missileTail = pooled.Prev;
+
+        pooled.Next = pooled.Prev = null;
+    }
+
     private void ReturnToPool(PooledProjectile projectile, Queue<PooledProjectile> pool, Transform container)
     {
         if (projectile == null) return;
         
+        projectile.Deactivate();
         projectile.gameObject.SetActive(false);
         projectile.CachedTransform.SetParent(container);
         
@@ -269,23 +320,23 @@ public class PlayerProjectilePool : MonoBehaviour
 
     public void ClearAllPools()
     {
-        foreach (var projectile in activeBullets)
+        PooledProjectile current = bulletHead;
+        while (current != null)
         {
-            if (projectile != null && projectile.gameObject != null)
-            {
-                Destroy(projectile.gameObject);
-            }
+            PooledProjectile next = current.Next;
+            Destroy(current.gameObject);
+            current = next;
         }
-        activeBullets.Clear();
+        bulletHead = bulletTail = null;
 
-        foreach (var projectile in activeMissiles)
+        current = missileHead;
+        while (current != null)
         {
-            if (projectile != null && projectile.gameObject != null)
-            {
-                Destroy(projectile.gameObject);
-            }
+            PooledProjectile next = current.Next;
+            Destroy(current.gameObject);
+            current = next;
         }
-        activeMissiles.Clear();
+        missileHead = missileTail = null;
 
         while (bulletPool.Count > 0)
         {
@@ -309,9 +360,12 @@ public class PlayerProjectilePool : MonoBehaviour
 
 public class PooledProjectile : MonoBehaviour
 {
-    private float lifetime;
-    private float spawnTime;
-    private bool isActive = false;
+    [HideInInspector] public bool isActive = false;
+    [HideInInspector] public float expireAt;
+
+    // Bolt: Intrusive linked list pointers for O(1) active projectile management
+    [HideInInspector] public PooledProjectile Next;
+    [HideInInspector] public PooledProjectile Prev;
 
     // Bolt: Optimized - cached components to avoid per-shot GetComponent calls
     public Rigidbody CachedRigidbody { get; private set; }
@@ -329,8 +383,7 @@ public class PooledProjectile : MonoBehaviour
 
     public void Activate(float projectileLifetime)
     {
-        lifetime = projectileLifetime;
-        spawnTime = Time.time;
+        expireAt = Time.time + projectileLifetime;
         isActive = true;
     }
 
@@ -341,28 +394,28 @@ public class PooledProjectile : MonoBehaviour
 
     public bool IsExpired(float now)
     {
-        if (!isActive) return false;
-        return now - spawnTime >= lifetime;
+        return isActive && now >= expireAt;
     }
 
     public void ReturnToPool()
     {
-        isActive = false;
+        if (!isActive) return;
         
         if (PlayerProjectilePool.Instance != null)
         {
-            // Bolt: Optimized - check component state/type instead of potentially expensive tag string comparisons
+            // Bolt: Optimized - direct return calls avoid GetComponent and tag comparisons
             if (CachedMissileController != null)
             {
-                PlayerProjectilePool.Instance.ReturnMissile(gameObject);
+                PlayerProjectilePool.Instance.ReturnMissile(this);
             }
             else
             {
-                PlayerProjectilePool.Instance.ReturnBullet(gameObject);
+                PlayerProjectilePool.Instance.ReturnBullet(this);
             }
         }
         else
         {
+            isActive = false;
             Destroy(gameObject);
         }
     }
