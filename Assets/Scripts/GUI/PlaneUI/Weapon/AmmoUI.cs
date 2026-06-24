@@ -18,6 +18,10 @@ public class AmmoUI : MonoBehaviour
     private bool lastIsInfinite = false;
     private int lastMissiles = -1;
     private int lastMaxMissiles = -1;
+    private bool uiResetDone = false;
+
+    private float timeSinceLastUpdate = 0f;
+    private const float UPDATE_INTERVAL = 0.1f;
 
     private void OnEnable()
     {
@@ -35,17 +39,28 @@ public class AmmoUI : MonoBehaviour
 
     private void Update()
     {
+        timeSinceLastUpdate += Time.unscaledDeltaTime;
+
         if (weaponManager == null)
         {
-            ResetAmmoUI();
+            if (timeSinceLastUpdate >= UPDATE_INTERVAL)
+            {
+                ResetAmmoUI();
+                timeSinceLastUpdate = 0f;
+            }
             return;
         }
 
-        UpdateAmmoUI();
+        if (timeSinceLastUpdate >= UPDATE_INTERVAL)
+        {
+            UpdateAmmoUI();
+            timeSinceLastUpdate = 0f;
+        }
     }
 
     private void UpdateAmmoUI()
     {
+        uiResetDone = false;
         if (machineGunAmmoText != null && showText)
         {
             int curBullets = weaponManager.GetCurrentBullets();
@@ -53,7 +68,12 @@ public class AmmoUI : MonoBehaviour
             bool infinite = weaponManager.isInfinite;
             if (infinite != lastIsInfinite || curBullets != lastBullets || maxBullets != lastMaxBullets)
             {
-                machineGunAmmoText.text = infinite ? ("inf / " + maxBullets) : (curBullets + " / " + maxBullets);
+                // Bolt: Optimized - use SetText to avoid string allocations from concatenation
+                if (infinite)
+                    machineGunAmmoText.SetText("inf / {0}", maxBullets);
+                else
+                    machineGunAmmoText.SetText("{0} / {1}", curBullets, maxBullets);
+
                 lastBullets = curBullets;
                 lastMaxBullets = maxBullets;
                 lastIsInfinite = infinite;
@@ -66,7 +86,8 @@ public class AmmoUI : MonoBehaviour
             int maxMissiles = weaponManager.maxMissiles;
             if (curMissiles != lastMissiles || maxMissiles != lastMaxMissiles)
             {
-                missileAmmoText.text = curMissiles + " / " + maxMissiles;
+                // Bolt: Optimized - use SetText to avoid string allocations
+                missileAmmoText.SetText("{0} / {1}", curMissiles, maxMissiles);
                 lastMissiles = curMissiles;
                 lastMaxMissiles = maxMissiles;
             }
@@ -81,6 +102,8 @@ public class AmmoUI : MonoBehaviour
 
     private void ResetAmmoUI()
     {
+        if (uiResetDone) return;
+
         if (machineGunAmmoText != null && showText)
             machineGunAmmoText.text = "-- / --";
 
@@ -92,5 +115,6 @@ public class AmmoUI : MonoBehaviour
         lastIsInfinite = false;
         lastMissiles = -1;
         lastMaxMissiles = -1;
+        uiResetDone = true;
     }
 }
