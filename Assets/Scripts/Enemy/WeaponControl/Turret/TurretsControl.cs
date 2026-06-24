@@ -160,16 +160,14 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
 
         if (bulletObj != null)
         {
-            // Bolt: Redundant tag assignment removed (set in pool)
-            bulletObj.transform.position = spawnPoint.position;
-            bulletObj.transform.rotation = Quaternion.LookRotation(gunBarrel.forward);
-
-            // Bolt: Optimized with PooledBullet component
+            // Bolt: Optimized with cached PooledBullet components
             if (bulletObj.TryGetComponent(out PooledBullet pooled))
             {
+                pooled.cachedTransform.SetPositionAndRotation(spawnPoint.position, Quaternion.LookRotation(gunBarrel.forward));
+
                 if (pooled.bulletDamage != null)
                 {
-                    pooled.bulletDamage.Initialize(damage, this);
+                    pooled.bulletDamage.Initialize(damage, this, pooled);
                 }
                 if (pooled.rb != null)
                 {
@@ -180,9 +178,10 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
             else
             {
                 // Fallback for non-pooled bullets
+                bulletObj.transform.SetPositionAndRotation(spawnPoint.position, Quaternion.LookRotation(gunBarrel.forward));
                 if (bulletObj.TryGetComponent(out BulletDamage bulletDamageComponent))
                 {
-                    bulletDamageComponent.Initialize(damage, this);
+                    bulletDamageComponent.Initialize(damage, this, null);
                 }
                 Rigidbody bulletRb = bulletObj.GetComponent<Rigidbody>();
                 if (bulletRb != null)
@@ -207,11 +206,13 @@ public class BulletDamage : MonoBehaviour
 {
     private float damage;
     private TurretControl sourceTurret;
+    private PooledBullet cachedPooledBullet;
 
-    public void Initialize(float bulletDamage, TurretControl turret)
+    public void Initialize(float bulletDamage, TurretControl turret, PooledBullet pooled)
     {
         damage = bulletDamage;
         sourceTurret = turret;
+        cachedPooledBullet = pooled;
     }
 
     private void OnTriggerEnter(Collider other)
@@ -223,17 +224,11 @@ public class BulletDamage : MonoBehaviour
             {
                 playerStats.TakeDamage(damage);
             }
-            if (BulletPool.Instance != null)
-            {
-                BulletPool.Instance.ReturnBullet(gameObject);
-            }
+            ReturnToPool();
         }
         else if (other.CompareTag("Enemy"))
         {
-            if (BulletPool.Instance != null)
-            {
-                BulletPool.Instance.ReturnBullet(gameObject);
-            }
+            ReturnToPool();
         }
         else if (other.CompareTag("Turret"))
         {
@@ -242,17 +237,22 @@ public class BulletDamage : MonoBehaviour
             {
                 turret.TakeDamage((int)damage);
             }
-            if (BulletPool.Instance != null)
-            {
-                BulletPool.Instance.ReturnBullet(gameObject);
-            }
+            ReturnToPool();
         }
         else
         {
-            if (BulletPool.Instance != null)
-            {
+            ReturnToPool();
+        }
+    }
+
+    private void ReturnToPool()
+    {
+        if (BulletPool.Instance != null)
+        {
+            if (cachedPooledBullet != null)
+                BulletPool.Instance.ReturnBullet(cachedPooledBullet);
+            else
                 BulletPool.Instance.ReturnBullet(gameObject);
-            }
         }
     }
 }
