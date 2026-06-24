@@ -5,6 +5,9 @@ using UnityEngine.Events;
 
 public class LevelUpSystem : MonoBehaviour
 {
+    // Bolt: Optimized - Singleton pattern for O(1) access from high-frequency damage paths.
+    public static LevelUpSystem Instance { get; private set; }
+
     [Header("Level System")]
     [SerializeField] private int currentLevel = 1;
     public const int MAX_LEVEL = 30;
@@ -15,28 +18,12 @@ public class LevelUpSystem : MonoBehaviour
     public UnityEvent onMaxLevelReached;
     public float nextLvStatsScale = 3.14f;
 
-    [Header("Refresh Settings")]
-    [SerializeField] private float enemyScanInterval = 2f;
-
     private PlaneStats playerPlane;
-
-    private struct TrackedEntity
-    {
-        public IHasHealth Target;
-        public MonoBehaviour MonoBehaviour;
-        public float LastHP;
-    }
-
-    // List for ordered iteration; HashSet for O(1) duplicate-check in TrackWeaponsOnObject.
-    private List<TrackedEntity> trackedEntities = new List<TrackedEntity>();
-    private HashSet<IHasHealth> trackedSet = new HashSet<IHasHealth>();
 
     private PlayerWeaponManager cachedWeaponManager;
     private LaserActive cachedLaserActive;
-    private float nextEnemyScanTime = 0f;
     private bool hasWeaponLevelUpListener = false;
     private bool hasLaserLevelUpListener = false;
-    private int _damageTrackFrame = 0;
 
     private static string SavePath =>
         System.IO.Path.Combine(Application.dataPath, "Scripts", "Data", "JSON", "save.json");
@@ -45,6 +32,12 @@ public class LevelUpSystem : MonoBehaviour
     public float CurrentExp => currentExp;
     public float ExpToNextLevel => expToNextLevel;
     public bool IsMaxLevel => currentLevel >= MAX_LEVEL;
+
+    void Awake()
+    {
+        if (Instance == null)
+            Instance = this;
+    }
 
     void OnEnable()
     {
@@ -62,12 +55,15 @@ public class LevelUpSystem : MonoBehaviour
     void Start()
     {
         LoadProgress();
-        FindPlayerAndEnemies();
+        // Bolt: Ensure player references are bound on start if already registered
+        if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
+            CachePlayerReferences(player);
         BindLevelUpListenersIfReady();
     }
 
     void OnDestroy()
     {
+        if (Instance == this) Instance = null;
         if (hasWeaponLevelUpListener)
             onLevelUp.RemoveListener(HandleWeaponLevelUp);
         if (hasLaserLevelUpListener)
@@ -93,42 +89,8 @@ public class LevelUpSystem : MonoBehaviour
 
     private void HandleLaserLevelUp(int level) => cachedLaserActive?.OnPlayerLevelUp();
 
-    void Update()
-    {
-        if (currentLevel >= MAX_LEVEL)
-        {
-            // At max level, clear tracking to free memory and skip all targeting/damage logic.
-            if (trackedEntities.Count > 0)
-            {
-                trackedEntities.Clear();
-                trackedSet.Clear();
-            }
-            return;
-        }
-
-        if (playerPlane == null || playerPlane.IsDead())
-        {
-            if (Time.time >= nextEnemyScanTime)
-            {
-                FindPlayerAndEnemies();
-                nextEnemyScanTime = Time.time + enemyScanInterval;
-            }
-        }
-
-        _damageTrackFrame++;
-        if (_damageTrackFrame >= 5)
-        {
-            _damageTrackFrame = 0;
-            ProcessTrackedTargets();
-        }
-    }
-
-    private void Track(IHasHealth target, float hp)
-    {
-        if (!trackedSet.Add(target)) return; // already tracked
-        trackedEntities.Add(new TrackedEntity { Target = target, MonoBehaviour = target as MonoBehaviour, LastHP = hp });
-    }
-
+    // Bolt: Optimized - Removed heavy polling logic (Update, ProcessTrackedTargets, FindPlayerAndEnemies).
+    // Experience gain is now event-driven from DamageHelper.cs, saving significant CPU and memory.
 
     private void CachePlayerReferences(GameObject player)
     {
@@ -143,100 +105,6 @@ public class LevelUpSystem : MonoBehaviour
         playerPlane = player.GetComponent<PlaneStats>();
         cachedWeaponManager = player.GetComponent<PlayerWeaponManager>();
         cachedLaserActive = player.GetComponent<LaserActive>();
-    }
-
-    private void FindPlayerAndEnemies()
-    {
-        if (GameEntityRegistry.TryGetPlayerObject(out GameObject player))
-            CachePlayerReferences(player);
-        else
-            CachePlayerReferences(null);
-
-        trackedEntities.Clear();
-        trackedSet.Clear();
-
-        if (GameManager.Instance != null)
-        {
-            var activeShips = GameManager.Instance.GetActiveEnemyShips();
-            foreach (var ship in activeShips)
-            {
-                if (ship == null) continue;
-                var enemyStats = ship.GetComponent<EnemyStats>();
-                if (enemyStats != null) Track(enemyStats, enemyStats.CurrentHP);
-            }
-
-            if (GameManager.Instance.currentBoss != null)
-            {
-                var bossStats = GameManager.Instance.currentBoss.GetComponent<MainBossStats>();
-                if (bossStats != null) Track(bossStats, bossStats.CurrentHP);
-            }
-        }
-
-        TrackWeaponsFromManagers();
-    }
-
-    // Finds all weapon components through WeaponDmgControl on active ships and boss
-    // instead of the expensive FindGameObjectsWithTag scene search.
-    private void TrackWeaponsFromManagers()
-    {
-        if (GameManager.Instance == null) return;
-
-        var allShips = GameManager.Instance.GetActiveEnemyShips();
-        TrackWeaponsOnObject(allShips);
-
-        if (GameManager.Instance.currentBoss != null)
-        {
-            var bossList = new List<GameObject> { GameManager.Instance.currentBoss };
-            TrackWeaponsOnObject(bossList);
-        }
-    }
-
-    private void TrackWeaponsOnObject(List<GameObject> ships)
-    {
-        foreach (var ship in ships)
-        {
-            if (ship == null) continue;
-            var dmgControl = ship.GetComponentInChildren<WeaponDmgControl>();
-            if (dmgControl == null) continue;
-
-            if (dmgControl.turretsManager != null)
-                foreach (var turret in dmgControl.turretsManager.turrets)
-                    if (turret != null) Track(turret, ((IHasHealth)turret).CurrentHP);
-
-            if (dmgControl.smallCanonManager != null)
-                foreach (var canon in dmgControl.smallCanonManager.canons)
-                    if (canon != null) Track(canon, ((IHasHealth)canon).CurrentHP);
-
-            foreach (var bigCanon in ship.GetComponentsInChildren<BigCanon>(true))
-                if (bigCanon != null) Track(bigCanon, ((IHasHealth)bigCanon).CurrentHP);
-        }
-    }
-
-    private void ProcessTrackedTargets()
-    {
-        for (int i = trackedEntities.Count - 1; i >= 0; i--)
-        {
-            TrackedEntity entity = trackedEntities[i];
-
-            // If the object was destroyed, clean it up.
-            if (entity.MonoBehaviour == null)
-            {
-                trackedSet.Remove(entity.Target);
-                trackedEntities.RemoveAt(i);
-                continue;
-            }
-
-            // Track damage since last check.
-            float currentHP = entity.Target.CurrentHP;
-            if (currentHP < entity.LastHP)
-            {
-                AddDamageExperience(entity.LastHP - currentHP);
-            }
-
-            // Update the cached HP in the list directly.
-            entity.LastHP = currentHP;
-            trackedEntities[i] = entity;
-        }
     }
 
     public void AddDamageExperience(float damage)
@@ -350,6 +218,5 @@ public class LevelUpSystem : MonoBehaviour
         if (playerPlane != null)
             ApplySavedStatsToPlayer(playerPlane);
         BindLevelUpListenersIfReady();
-        FindPlayerAndEnemies();
     }
 }
