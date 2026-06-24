@@ -47,13 +47,6 @@ public partial class TargetLockUI : MonoBehaviour
     private float enemyTargetCacheTimer = 0f;
     private const float ENEMY_TARGET_CACHE_INTERVAL = 0.5f;
 
-    // Throttle UI raycasts to ~10 Hz to cut canvas-rebuild churn during turns.
-    private float weaponUIRaycastTimer = 0f;
-    private float laserUIRaycastTimer = 0f;
-    private const float UI_RAYCAST_INTERVAL = 0.1f;
-    private bool cachedMgInRange = false;
-    private bool cachedLaserHitInRange = false;
-
     private float sqrMissileFireRange;
     private float sqrLockCircleRadius;
 
@@ -89,52 +82,29 @@ public partial class TargetLockUI : MonoBehaviour
         if (!isInitialized || cachedPlayer == null || !cachedPlayer.activeInHierarchy)
             return;
 
-        UpdateWeaponUI();
-        UpdateMissileUI();
+        // Bolt: Optimized - Update Laser and Missile UI first so their state is ready for UpdateWeaponUI's Normal UI logic
         UpdateLaserUI();
+        UpdateMissileUI();
+        UpdateWeaponUI();
         UpdateCheatUI();
         UpdateMissileModeUI();
     }
 
     private void UpdateWeaponUI()
     {
+        // Bolt: Optimized - Consolidate weapon UI logic and remove redundant raycast checks
         if (weaponManager == null) return;
 
         bool inFireRange = weaponManager.IsTargetInRange(weaponManager.machineGunFireRange);
+        // Bolt: missileInRange here is only for the Normal UI calculation; actual missile UI state is in UpdateMissileUI
         bool missileInRange = weaponManager.IsTargetInRange(weaponManager.missileFireRange);
 
         SetUIActive(ref lastMachineGunUIActive, ref hasAppliedMachineGunUI, machineGunUI, inFireRange);
-        SetUIActive(ref lastMissileLockUIActive, ref hasAppliedMissileLockUI, missileLockUI, missileInRange);
 
+        // Normal UI is shown only if no weapon is in range
         bool normalShouldBeActive = !(inFireRange || missileInRange || isLaserInRange);
         SetUIActive(ref lastNormalUIActive, ref hasAppliedNormalUI, normalUI, normalShouldBeActive);
 
-        weaponUIRaycastTimer -= Time.deltaTime;
-        if (weaponUIRaycastTimer <= 0f)
-        {
-            weaponUIRaycastTimer = UI_RAYCAST_INTERVAL;
-            cachedMgInRange = false;
-            if (weaponManager.TryGetCurrentTargetHit(out RaycastHit hit))
-            {
-                if ((hit.collider.CompareTag("Enemy") || hit.collider.CompareTag("Turret")) &&
-                    hit.distance <= weaponManager.machineGunFireRange)
-                {
-                    cachedMgInRange = true;
-                }
-            }
-        }
-
-        bool targetUIActive = lastMachineGunUIActive;
-        bool normalUIActive = lastNormalUIActive;
-
-        if (cachedMgInRange && !targetUIActive)
-        {
-            UpdateUI(true);
-        }
-        else if (!cachedMgInRange && !normalUIActive)
-        {
-            UpdateUI(false);
-        }
     }
 
     private void SetUIActive(ref bool lastState, ref bool hasApplied, GameObject target, bool active)
@@ -251,29 +221,8 @@ public partial class TargetLockUI : MonoBehaviour
 
     private void UpdateLaserUI()
     {
-        if (laserActive == null)
-        {
-            isLaserInRange = false;
-        }
-        else
-        {
-            laserUIRaycastTimer -= Time.deltaTime;
-            if (laserUIRaycastTimer <= 0f)
-            {
-                laserUIRaycastTimer = UI_RAYCAST_INTERVAL;
-                float range = laserActive.CurrentBeamLength;
-                Ray ray = laserActive.weaponManager != null ? laserActive.weaponManager.GetCurrentTargetRay() : cachedMainCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
-                cachedLaserHitInRange = false;
-                if (Physics.Raycast(ray, out RaycastHit hit, range))
-                {
-                    if (hit.collider.CompareTag("Enemy") || hit.collider.CompareTag("Turret"))
-                    {
-                        cachedLaserHitInRange = true;
-                    }
-                }
-            }
-            isLaserInRange = cachedLaserHitInRange;
-        }
+        // Bolt: Optimized - Remove redundant raycast and leverage PlayerWeaponManager's cached result (throttled at 10Hz)
+        isLaserInRange = laserActive != null && weaponManager != null && weaponManager.IsTargetInRange(laserActive.laserFireRange);
 
         if (laserRangeText != null)
         {

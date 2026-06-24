@@ -35,6 +35,8 @@ public class LaserActive : MonoBehaviour
     private AudioSource laserAudioSource;
     private bool audioSourceInitialized = false;
 
+    private static readonly int BeamsScaleId = Shader.PropertyToID("BeamsScale");
+
     void Start()
     {
         CurrentBeamLength = laserFireRange;
@@ -254,15 +256,15 @@ public class LaserActive : MonoBehaviour
 
         if (activeVFX != null)
         {
-            Vector3 beamScale = activeVFX.GetVector3("BeamsScale");
+            Vector3 beamScale = activeVFX.GetVector3(BeamsScaleId);
             beamScale.y = CurrentBeamLength;
-            activeVFX.SetVector3("BeamsScale", beamScale);
+            activeVFX.SetVector3(BeamsScaleId, beamScale);
         }
         if (laserVisualScript != null)
         {
-            Vector3 beamScale = laserVisualScript.GetVector3("BeamsScale");
+            Vector3 beamScale = laserVisualScript.GetVector3(BeamsScaleId);
             beamScale.y = CurrentBeamLength;
-            laserVisualScript.SetVector3("BeamsScale", beamScale);
+            laserVisualScript.SetVector3(BeamsScaleId, beamScale);
         }
     }
 }
