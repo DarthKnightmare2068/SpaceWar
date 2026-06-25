@@ -26,7 +26,7 @@ public class LevelUpSystem : MonoBehaviour
     private bool hasLaserLevelUpListener = false;
 
     private static string SavePath =>
-        System.IO.Path.Combine(Application.dataPath, "Scripts", "Data", "JSON", "save.json");
+        System.IO.Path.Combine(Application.persistentDataPath, "save.json");
 
     public int CurrentLevel => currentLevel;
     public float CurrentExp => currentExp;
@@ -150,18 +150,22 @@ public class LevelUpSystem : MonoBehaviour
 
     public void SaveProgress()
     {
-        var data = new SaveData
+        try
         {
-            level = currentLevel,
-            currentExp = currentExp,
-            expToNextLevel = expToNextLevel,
-            maxHP = playerPlane != null ? playerPlane.maxHP : 0,
-            attackPoint = playerPlane != null ? playerPlane.attackPoint : 0
-        };
-        string dir = System.IO.Path.GetDirectoryName(SavePath);
-        if (!Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-        File.WriteAllText(SavePath, JsonUtility.ToJson(data));
+            var data = new SaveData
+            {
+                level = currentLevel,
+                currentExp = currentExp,
+                expToNextLevel = expToNextLevel,
+                maxHP = playerPlane != null ? playerPlane.maxHP : 0,
+                attackPoint = playerPlane != null ? playerPlane.attackPoint : 0
+            };
+            string dir = System.IO.Path.GetDirectoryName(SavePath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            File.WriteAllText(SavePath, JsonUtility.ToJson(data));
+        }
+        catch (System.Exception) { /* Sentinel: Ignore save failures to prevent interrupting gameplay. */ }
     }
 
     private void LoadProgress()
@@ -169,12 +173,20 @@ public class LevelUpSystem : MonoBehaviour
         if (!File.Exists(SavePath)) return;
         try
         {
-            var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
+            FileInfo fileInfo = new FileInfo(SavePath);
+            // Sentinel: Security check - Limit file size to 1MB to prevent OOM attacks.
+            if (fileInfo.Length > 1024 * 1024) return;
+
+            var json = File.ReadAllText(SavePath);
+            var data = JsonUtility.FromJson<SaveData>(json);
+            if (data == null) return;
+
             currentLevel = Mathf.Clamp(data.level, 1, MAX_LEVEL);
-            currentExp = data.currentExp;
-            expToNextLevel = data.expToNextLevel;
+            // Sentinel: Validate loaded data to prevent rapid leveling or infinite loops.
+            currentExp = Mathf.Max(0, data.currentExp);
+            expToNextLevel = Mathf.Max(100f, data.expToNextLevel);
         }
-        catch { }
+        catch (System.Exception) { /* Fail silently to prevent crashing on corrupt save data. */ }
     }
 
     // Reads the save file and applies stored maxHP/attackPoint to a freshly spawned player.
@@ -183,16 +195,25 @@ public class LevelUpSystem : MonoBehaviour
         if (stats == null || !File.Exists(SavePath)) return;
         try
         {
-            var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
+            FileInfo fileInfo = new FileInfo(SavePath);
+            if (fileInfo.Length > 1024 * 1024) return;
+
+            var json = File.ReadAllText(SavePath);
+            var data = JsonUtility.FromJson<SaveData>(json);
+            if (data == null) return;
+
+            // Sentinel: Sane upper limits to prevent game logic exploitation via file tampering.
             if (data.maxHP > 0)
             {
-                stats.maxHP = data.maxHP;
-                stats.Heal(data.maxHP); // Bring currentHP up to new maxHP
+                stats.maxHP = Mathf.Clamp(data.maxHP, 1, 1000000);
+                stats.Heal(stats.maxHP); // Bring currentHP up to new maxHP
             }
             if (data.attackPoint > 0)
-                stats.attackPoint = data.attackPoint;
+            {
+                stats.attackPoint = Mathf.Clamp(data.attackPoint, 1, 1000000);
+            }
         }
-        catch { }
+        catch (System.Exception) { }
     }
 
     public void DeleteSaveFile()
