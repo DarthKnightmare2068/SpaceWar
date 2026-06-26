@@ -35,6 +35,7 @@ public class PlayerWeaponManager : MonoBehaviour
     // Throttled to avoid a per-frame raycast; IsTargetInRange reuses the cached hit.
     private RaycastHit currentTargetHit;
     private bool currentTargetHitValid;
+    private bool currentTargetIsTargetable;
     private float targetRaycastTimer;
     private const float TARGET_RAYCAST_INTERVAL = 0.1f;
 
@@ -84,6 +85,18 @@ public class PlayerWeaponManager : MonoBehaviour
         {
             targetRaycastTimer = TARGET_RAYCAST_INTERVAL;
             currentTargetHitValid = Physics.Raycast(currentTargetRay, out currentTargetHit, machineGunFireRange, targetableLayers);
+
+            if (currentTargetHitValid && currentTargetHit.collider != null)
+            {
+                // Bolt: Optimized - cache targetable status at the same frequency as the raycast (10Hz)
+                // to avoid redundant CompareTag calls in the high-frequency IsTargetInRange path.
+                currentTargetIsTargetable = currentTargetHit.collider.CompareTag("Enemy") ||
+                                            currentTargetHit.collider.CompareTag("Turret");
+            }
+            else
+            {
+                currentTargetIsTargetable = false;
+            }
         }
 
         if (currentTargetHitValid)
@@ -132,13 +145,14 @@ public class PlayerWeaponManager : MonoBehaviour
             return false;
         }
 
-        if (!currentTargetHitValid) return false;
-        if (currentTargetHit.collider == null) { currentTargetHitValid = false; return false; }
-        if (currentTargetHit.distance > range) return false;
+        // Bolt: Optimized - use cached targetable status and raycast results.
+        // This avoids per-frame native-to-managed CompareTag calls.
+        if (!currentTargetHitValid || !currentTargetIsTargetable) return false;
 
-        bool isEnemy = currentTargetHit.collider.CompareTag("Enemy");
-        bool isTurret = currentTargetHit.collider.CompareTag("Turret");
-        return isEnemy || isTurret;
+        // Safety: ensure collider wasn't destroyed since the last 10Hz raycast.
+        if (currentTargetHit.collider == null) { currentTargetHitValid = false; currentTargetIsTargetable = false; return false; }
+
+        return currentTargetHit.distance <= range;
     }
 
     public void SetTargetLockUI(RectTransform uiElement)
