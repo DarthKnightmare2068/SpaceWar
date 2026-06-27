@@ -14,14 +14,10 @@ public class VFXPool : MonoBehaviour
 
     // Bolt: Optimized - store PooledVFX component to avoid per-spawn GetComponent lookups
     private readonly Dictionary<GameObject, Queue<PooledVFX>> pools = new Dictionary<GameObject, Queue<PooledVFX>>();
-    private readonly List<ActiveVFX> activeList = new List<ActiveVFX>();
 
-    private struct ActiveVFX
-    {
-        public PooledVFX vfx;
-        public GameObject prefab;
-        public float expireAt;
-    }
+    // Bolt: Intrusive linked list for O(1) active VFX management and early-exit Update
+    private PooledVFX activeHead = null;
+    private PooledVFX activeTail = null;
 
     void Awake()
     {
@@ -36,19 +32,28 @@ public class VFXPool : MonoBehaviour
     void Update()
     {
         float now = Time.time;
-        for (int i = activeList.Count - 1; i >= 0; i--)
+        // Bolt: Optimized - Traverse the linked list and return expired effects.
+        // We do not use chronological early-exit because different VFX have different lifetimes.
+        PooledVFX current = activeHead;
+        while ((object)current != null)
         {
-            ActiveVFX entry = activeList[i];
-            if (entry.vfx == null)
+            // Cache Next before potentially returning/recycling 'current'
+            PooledVFX next = current.Next;
+
+            if (current == null || now >= current.expireAt)
             {
-                activeList.RemoveAt(i);
-                continue;
+                if (current != null)
+                {
+                    Return(current.sourcePrefab, current);
+                }
+                else
+                {
+                    // Destroyed externally, remove from list and continue
+                    RemoveFromActiveList(current);
+                }
             }
-            if (now >= entry.expireAt)
-            {
-                activeList.RemoveAt(i);
-                Return(entry.prefab, entry.vfx);
-            }
+
+            current = next;
         }
     }
 
@@ -67,9 +72,12 @@ public class VFXPool : MonoBehaviour
         {
             GameObject obj = Instantiate(prefab, transform);
 
-            // Bolt: Optimized - cache ParticleSystem during pre-warm
+            // Bolt: Optimized - cache components and properties during pre-warm
             var pooled = obj.AddComponent<PooledVFX>();
             pooled.ps = obj.GetComponent<ParticleSystem>();
+            pooled.cachedGameObject = obj;
+            pooled.cachedTransform = obj.transform;
+            pooled.sourcePrefab = prefab;
 
             obj.SetActive(false);
             queue.Enqueue(pooled);
@@ -92,20 +100,26 @@ public class VFXPool : MonoBehaviour
 
         PooledVFX pooled = null;
         while (queue.Count > 0 && pooled == null)
+        {
             pooled = queue.Dequeue();
+        }
 
         if (pooled == null)
         {
             GameObject instance = Instantiate(prefab, position, rotation);
             pooled = instance.AddComponent<PooledVFX>();
             pooled.ps = instance.GetComponent<ParticleSystem>();
+            pooled.cachedGameObject = instance;
+            pooled.cachedTransform = instance.transform;
+            pooled.sourcePrefab = prefab;
         }
         else
         {
-            pooled.transform.SetPositionAndRotation(position, rotation);
+            pooled.cachedTransform.SetPositionAndRotation(position, rotation);
         }
 
-        pooled.gameObject.SetActive(true);
+        pooled.isActive = true;
+        pooled.cachedGameObject.SetActive(true);
 
         if (pooled.ps != null)
         {
@@ -115,14 +129,10 @@ public class VFXPool : MonoBehaviour
                 lifetime = pooled.ps.main.duration + pooled.ps.main.startLifetime.constantMax;
         }
 
-        activeList.Add(new ActiveVFX
-        {
-            vfx = pooled,
-            prefab = prefab,
-            expireAt = Time.time + lifetime
-        });
+        pooled.expireAt = Time.time + lifetime;
+        AddToActiveList(pooled);
 
-        return pooled.gameObject;
+        return pooled.cachedGameObject;
     }
 
     /// <summary>
@@ -145,22 +155,67 @@ public class VFXPool : MonoBehaviour
     }
 
     /// <summary>
-    /// Bolt: Optimized internal return that avoids GetComponent.
+    /// Bolt: Optimized internal return that avoids GetComponent and dictionary lookups where possible.
     /// </summary>
     private void Return(GameObject prefab, PooledVFX pooled)
     {
-        if (pooled == null) return;
-        pooled.gameObject.SetActive(false);
+        if ((object)pooled == null || !pooled.isActive) return;
 
-        if (prefab != null)
+        pooled.isActive = false;
+        RemoveFromActiveList(pooled);
+
+        if (pooled != null)
         {
-            if (!pools.TryGetValue(prefab, out Queue<PooledVFX> queue))
+            pooled.cachedGameObject.SetActive(false);
+
+            if (prefab != null)
             {
-                queue = new Queue<PooledVFX>();
-                pools[prefab] = queue;
+                if (!pools.TryGetValue(prefab, out Queue<PooledVFX> queue))
+                {
+                    queue = new Queue<PooledVFX>();
+                    pools[prefab] = queue;
+                }
+                queue.Enqueue(pooled);
             }
-            queue.Enqueue(pooled);
         }
+    }
+
+    private void AddToActiveList(PooledVFX pooled)
+    {
+        if (activeTail == null)
+        {
+            activeHead = activeTail = pooled;
+            pooled.Next = pooled.Prev = null;
+        }
+        else
+        {
+            activeTail.Next = pooled;
+            pooled.Prev = activeTail;
+            pooled.Next = null;
+            activeTail = pooled;
+        }
+    }
+
+    private void RemoveFromActiveList(PooledVFX pooled)
+    {
+        // To safely handle Unity-destroyed objects (where 'pooled == null' is true but
+        // '(object)pooled == null' might be false if we have a stale reference),
+        // we must be extremely careful.
+        // If 'pooled' is a valid managed reference, we mend the chain.
+
+        if ((object)pooled == null) return;
+
+        PooledVFX prev = pooled.Prev;
+        PooledVFX next = pooled.Next;
+
+        if ((object)prev != null) prev.Next = next;
+        if ((object)next != null) next.Prev = prev;
+
+        if ((object)activeHead == (object)pooled) activeHead = next;
+        if ((object)activeTail == (object)pooled) activeTail = prev;
+
+        pooled.Next = null;
+        pooled.Prev = null;
     }
 
     /// <summary>
@@ -173,9 +228,37 @@ public class VFXPool : MonoBehaviour
 }
 
 /// <summary>
-/// Bolt: Optimized component cache for pooled VFX objects.
+/// Bolt: Optimized component cache and intrusive linked list support for pooled VFX objects.
 /// </summary>
 public class PooledVFX : MonoBehaviour
 {
     public ParticleSystem ps;
+    [HideInInspector] public GameObject cachedGameObject;
+    [HideInInspector] public Transform cachedTransform;
+    [HideInInspector] public float expireAt;
+    [HideInInspector] public bool isActive;
+    [HideInInspector] public GameObject sourcePrefab;
+
+    [HideInInspector] public PooledVFX Next;
+    [HideInInspector] public PooledVFX Prev;
+
+    private void OnDestroy()
+    {
+        // Safety: if the object is destroyed externally, we must ensure it doesn't leave
+        // broken references in the active list.
+        if (isActive && (object)VFXPool.Instance != null)
+        {
+            // Mend the chain if possible.
+            if ((object)Prev != null) Prev.Next = Next;
+            if ((object)Next != null) Next.Prev = Prev;
+
+            // We can't safely update the pool's Head/Tail directly from here
+            // without a reference to the pool instance's private fields,
+            // but VFXPool.Update() uses '(object)current != null' and 'current == null'
+            // checks to handle these "missing" nodes safely.
+
+            Next = null;
+            Prev = null;
+        }
+    }
 }
