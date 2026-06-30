@@ -98,7 +98,7 @@ public class BulletPool : MonoBehaviour
         }
     }
 
-    public GameObject GetBullet(string type)
+    public PooledBullet GetBullet(string type)
     {
         PooledBullet pooled = null;
         if (bulletPool.Count > 0)
@@ -132,7 +132,7 @@ public class BulletPool : MonoBehaviour
             pooled.cachedGameObject.SetActive(true);
             activeBullets++;
             TrackActiveBullet(pooled, GetLifetimeForType(type));
-            return pooled.cachedGameObject;
+            return pooled;
         }
 
         return null;

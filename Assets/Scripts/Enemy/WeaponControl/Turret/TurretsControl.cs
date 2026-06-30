@@ -117,27 +117,32 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
         if (!gameObject.activeInHierarchy) return;
         if (CurrentTarget != null)
         {
-            directionToEnemy = CurrentTarget.position - gunBarrel.position;
+            // Bolt: Optimized - cache target position to minimize native calls
+            Vector3 targetPos = CurrentTarget.position;
+            directionToEnemy = targetPos - gunBarrel.position;
             // Bolt: Optimized using sqrMagnitude
             float sqrDistanceToEnemy = directionToEnemy.sqrMagnitude;
 
             if (sqrDistanceToEnemy < howCloseToEnemySqr)
             {
                 Quaternion targetRotation = Quaternion.LookRotation(directionToEnemy);
+                Vector3 euler = targetRotation.eulerAngles;
 
-                Quaternion finalRotation = Quaternion.Euler(targetRotation.eulerAngles.x, targetRotation.eulerAngles.y, 90);
+                Quaternion finalRotation = Quaternion.Euler(euler.x, euler.y, 90);
                 if (trackPlayerInstantly)
                 {
                     joint.rotation = finalRotation;
-                    body.rotation = Quaternion.Euler(0, targetRotation.eulerAngles.y, 0);
+                    body.rotation = Quaternion.Euler(0, euler.y, 0);
                 }
                 else
                 {
-                    joint.rotation = Quaternion.Slerp(joint.rotation, finalRotation, maxRotationSpeed * Time.deltaTime);
-                    body.rotation = Quaternion.Slerp(body.rotation, Quaternion.Euler(0, targetRotation.eulerAngles.y, 0), maxRotationSpeed * Time.deltaTime);
+                    float dt = Time.deltaTime;
+                    joint.rotation = Quaternion.Slerp(joint.rotation, finalRotation, maxRotationSpeed * dt);
+                    body.rotation = Quaternion.Slerp(body.rotation, Quaternion.Euler(0, euler.y, 0), maxRotationSpeed * dt);
                 }
 
-                gunBarrel.LookAt(CurrentTarget.position);
+                // Bolt: Optimized - use calculated rotation instead of redundant LookAt
+                gunBarrel.rotation = targetRotation;
 
                 if (Time.time >= nextFire)
                 {
@@ -156,39 +161,21 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
 
         Transform spawnPoint = turretSpawnPoints[spawnIndex];
 
-        GameObject bulletObj = BulletPool.Instance.GetBullet("Turret");
+        // Bolt: Optimized - GetBullet now returns PooledBullet directly, avoiding TryGetComponent
+        PooledBullet pooled = BulletPool.Instance.GetBullet("Turret");
 
-        if (bulletObj != null)
+        if (pooled != null)
         {
-            // Bolt: Optimized with cached PooledBullet components
-            if (bulletObj.TryGetComponent(out PooledBullet pooled))
-            {
-                pooled.cachedTransform.SetPositionAndRotation(spawnPoint.position, Quaternion.LookRotation(gunBarrel.forward));
+            pooled.cachedTransform.SetPositionAndRotation(spawnPoint.position, Quaternion.LookRotation(gunBarrel.forward));
 
-                if (pooled.bulletDamage != null)
-                {
-                    pooled.bulletDamage.Initialize(damage, this, pooled);
-                }
-                if (pooled.rb != null)
-                {
-                    float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
-                    pooled.rb.linearVelocity = gunBarrel.forward * speed;
-                }
-            }
-            else
+            if (pooled.bulletDamage != null)
             {
-                // Fallback for non-pooled bullets
-                bulletObj.transform.SetPositionAndRotation(spawnPoint.position, Quaternion.LookRotation(gunBarrel.forward));
-                if (bulletObj.TryGetComponent(out BulletDamage bulletDamageComponent))
-                {
-                    bulletDamageComponent.Initialize(damage, this, null);
-                }
-                Rigidbody bulletRb = bulletObj.GetComponent<Rigidbody>();
-                if (bulletRb != null)
-                {
-                    float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
-                    bulletRb.linearVelocity = gunBarrel.forward * speed;
-                }
+                pooled.bulletDamage.Initialize(damage, this, pooled);
+            }
+            if (pooled.rb != null)
+            {
+                float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
+                pooled.rb.linearVelocity = gunBarrel.forward * speed;
             }
         }
 
