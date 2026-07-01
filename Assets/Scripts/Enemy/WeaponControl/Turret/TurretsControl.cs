@@ -156,39 +156,21 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
 
         Transform spawnPoint = turretSpawnPoints[spawnIndex];
 
-        GameObject bulletObj = BulletPool.Instance.GetBullet("Turret");
+        PooledBullet pooled = BulletPool.Instance.GetBullet("Turret");
 
-        if (bulletObj != null)
+        if (pooled != null)
         {
-            // Bolt: Optimized with cached PooledBullet components
-            if (bulletObj.TryGetComponent(out PooledBullet pooled))
-            {
-                pooled.cachedTransform.SetPositionAndRotation(spawnPoint.position, Quaternion.LookRotation(gunBarrel.forward));
+            // Bolt: Optimized - use direct PooledBullet reference and cached Transform
+            pooled.cachedTransform.SetPositionAndRotation(spawnPoint.position, Quaternion.LookRotation(gunBarrel.forward));
 
-                if (pooled.bulletDamage != null)
-                {
-                    pooled.bulletDamage.Initialize(damage, this, pooled);
-                }
-                if (pooled.rb != null)
-                {
-                    float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
-                    pooled.rb.linearVelocity = gunBarrel.forward * speed;
-                }
-            }
-            else
+            if (pooled.bulletDamage != null)
             {
-                // Fallback for non-pooled bullets
-                bulletObj.transform.SetPositionAndRotation(spawnPoint.position, Quaternion.LookRotation(gunBarrel.forward));
-                if (bulletObj.TryGetComponent(out BulletDamage bulletDamageComponent))
-                {
-                    bulletDamageComponent.Initialize(damage, this, null);
-                }
-                Rigidbody bulletRb = bulletObj.GetComponent<Rigidbody>();
-                if (bulletRb != null)
-                {
-                    float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
-                    bulletRb.linearVelocity = gunBarrel.forward * speed;
-                }
+                pooled.bulletDamage.Initialize(damage, this, pooled);
+            }
+            if (pooled.rb != null)
+            {
+                float speed = cachedManager != null ? cachedManager.bulletSpeed : 100f;
+                pooled.rb.linearVelocity = gunBarrel.forward * speed;
             }
         }
 
