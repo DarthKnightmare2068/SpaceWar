@@ -35,6 +35,7 @@ public class PlayerWeaponManager : MonoBehaviour
     // Throttled to avoid a per-frame raycast; IsTargetInRange reuses the cached hit.
     private RaycastHit currentTargetHit;
     private bool currentTargetHitValid;
+    private bool currentTargetIsTargetable;
     private float targetRaycastTimer;
     private const float TARGET_RAYCAST_INTERVAL = 0.1f;
 
@@ -84,6 +85,17 @@ public class PlayerWeaponManager : MonoBehaviour
         {
             targetRaycastTimer = TARGET_RAYCAST_INTERVAL;
             currentTargetHitValid = Physics.Raycast(currentTargetRay, out currentTargetHit, machineGunFireRange, targetableLayers);
+
+            // Bolt: Optimized - Update targetability only when the raycast runs (10Hz)
+            if (currentTargetHitValid && currentTargetHit.collider != null)
+            {
+                currentTargetIsTargetable = currentTargetHit.collider.CompareTag("Enemy") ||
+                                            currentTargetHit.collider.CompareTag("Turret");
+            }
+            else
+            {
+                currentTargetIsTargetable = false;
+            }
         }
 
         if (currentTargetHitValid)
@@ -133,12 +145,18 @@ public class PlayerWeaponManager : MonoBehaviour
         }
 
         if (!currentTargetHitValid) return false;
-        if (currentTargetHit.collider == null) { currentTargetHitValid = false; return false; }
-        if (currentTargetHit.distance > range) return false;
 
-        bool isEnemy = currentTargetHit.collider.CompareTag("Enemy");
-        bool isTurret = currentTargetHit.collider.CompareTag("Turret");
-        return isEnemy || isTurret;
+        // Bolt: Optimized - Use cached targetability result to avoid per-frame CompareTag calls
+        if (!currentTargetIsTargetable) return false;
+
+        if (currentTargetHit.collider == null)
+        {
+            currentTargetHitValid = false;
+            currentTargetIsTargetable = false;
+            return false;
+        }
+
+        return currentTargetHit.distance <= range;
     }
 
     public void SetTargetLockUI(RectTransform uiElement)
