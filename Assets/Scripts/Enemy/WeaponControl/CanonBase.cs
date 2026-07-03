@@ -59,6 +59,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
 
     private bool _startCompleted;
     private GameObject activeLaserInstance;
+    private bool _isLaserActive;
+    private bool _isAtDefaultRotation;
+    private Transform _laserVFXTransform;
 
     // Throttled to ~10 Hz so a 10-cannon boss does ~10 raycasts/frame instead of 20.
     private RaycastHit lastHit;
@@ -102,8 +105,12 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
             laserEndPoint = new GameObject("LaserEndPoint_Generated").transform;
 
         if (laserVFX != null)
-            laserEndPoint.SetParent(laserVFX.transform);
+        {
+            _laserVFXTransform = laserVFX.transform;
+            laserEndPoint.SetParent(_laserVFXTransform);
+        }
 
+        _isAtDefaultRotation = true;
         healthBar = GetComponentInChildren<WeaponHealthBar>();
     }
 
@@ -112,8 +119,6 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
 
     protected virtual void Update()
     {
-        if (!gameObject.activeInHierarchy) return;
-
         if (enemy == null || !enemy.gameObject.activeInHierarchy)
         {
             playerSearchCooldown -= Time.deltaTime;
@@ -147,7 +152,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
                     isTargetLocked = false;
                     StopLaserVFX();
                 }
-                ResetToDefaultRotation();
+                if (!_isAtDefaultRotation) ResetToDefaultRotation();
                 return;
             }
         }
@@ -159,7 +164,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         if (!isTargetLocked)
         {
             StopLaserVFX();
-            ResetToDefaultRotation();
+            if (!_isAtDefaultRotation) ResetToDefaultRotation();
         }
     }
 
@@ -211,29 +216,39 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         // spawn before the player (which is always the case at scene start).
     }
 
-    // Bolt: Optimized unused length parameter removal
+    // Bolt: Optimized - Added _isLaserActive guard to avoid redundant native calls and expensive HasAnySystemAwake checks
     protected void PlayLaserVFX()
     {
-        if (!gameObject.activeInHierarchy) return;
         if (laserVFX != null)
         {
-            if (!laserVFX.HasAnySystemAwake())
+            if (!_isLaserActive)
+            {
                 laserVFX.Play();
+                _isLaserActive = true;
+            }
         }
         else if (laserVFXPrefab != null && activeLaserInstance == null)
         {
             activeLaserInstance = Instantiate(laserVFXPrefab, gunBarrel.position, gunBarrel.rotation, gunBarrel);
+            _isLaserActive = true;
         }
     }
 
     protected void StopLaserVFX()
     {
-        if (laserVFX != null && laserVFX.HasAnySystemAwake())
-            laserVFX.Stop();
-        if (activeLaserInstance != null)
+        if (laserVFX != null)
+        {
+            if (_isLaserActive)
+            {
+                laserVFX.Stop();
+                _isLaserActive = false;
+            }
+        }
+        else if (activeLaserInstance != null)
         {
             Destroy(activeLaserInstance);
             activeLaserInstance = null;
+            _isLaserActive = false;
         }
     }
 
@@ -250,14 +265,13 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         if (!Mathf.Approximately(currentLaserScale, distance))
         {
             currentLaserScale = distance;
-            // Bolt: Optimized with multiplication
-            laserVFX.transform.localScale = new Vector3(currentLaserScale * 0.5f, currentLaserScale * 0.5f, currentLaserScale);
+            // Bolt: Optimized with multiplication and cached transform
+            _laserVFXTransform.localScale = new Vector3(currentLaserScale * 0.5f, currentLaserScale * 0.5f, currentLaserScale);
         }
     }
 
     protected void HandleTargeting()
     {
-        if (!gameObject.activeInHierarchy) return;
         if (enemy == null)
         {
             isTargetLocked = false;
@@ -316,9 +330,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         Vector3 worldDirToTarget = currentWorldDirToJoint;
         if (worldDirToTarget == Vector3.zero) return false;
 
-        // Bolt: Optimized - cache body rotation and up vector
+        // Bolt: Optimized - cache body rotation and derive up vector in managed code
         Quaternion currentBodyRot = body.rotation;
-        Vector3 currentBodyUp = body.up;
+        Vector3 currentBodyUp = currentBodyRot * Vector3.up;
         Quaternion targetLocalRotation = Quaternion.Inverse(currentBodyRot) * Quaternion.LookRotation(worldDirToTarget, currentBodyUp);
         targetLocalRotation.y = 0;
         targetLocalRotation.z = 0;
@@ -331,8 +345,6 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
 
     protected void HandleRotationAndFiring()
     {
-        if (!gameObject.activeInHierarchy) return;
-
         if (!isTargetLocked || enemy == null)
         {
             if (laserVFXPrefab != null && laserVFXPrefab.activeSelf)
@@ -356,7 +368,7 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         if (lastHitValid && lastHit.transform != null && lastHit.transform.CompareTag("Player"))
         {
             if (laserEndPoint != null && laserVFX != null)
-                laserEndPoint.localPosition = laserVFX.transform.InverseTransformPoint(lastHit.point);
+                laserEndPoint.localPosition = _laserVFXTransform.InverseTransformPoint(lastHit.point);
             if (laserVFXPrefab != null && !laserVFXPrefab.activeSelf)
                 laserVFXPrefab.SetActive(true);
             // Bolt: Optimized call site
@@ -396,9 +408,9 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
         Vector3 worldDir = currentWorldDirToJoint;
         if (worldDir != Vector3.zero)
         {
-            // Bolt: Optimized - cache body rotation and up vector
+            // Bolt: Optimized - cache body rotation and derive up vector in managed code
             Quaternion currentBodyRot = body.rotation;
-            Vector3 currentBodyUp = body.up;
+            Vector3 currentBodyUp = currentBodyRot * Vector3.up;
             Quaternion localRot = Quaternion.Inverse(currentBodyRot) * Quaternion.LookRotation(worldDir, currentBodyUp);
             localRot.y = 0;
             localRot.z = 0;
@@ -408,11 +420,27 @@ public abstract class CanonBase : MonoBehaviour, IHittable, IHasHealth, ITargeta
             Quaternion target = Quaternion.Euler(pitch, 0, 0);
             joint.localRotation = trackPlayerInstantly ? target : Quaternion.Slerp(joint.localRotation, target, maxRotationSpeed * Time.deltaTime);
         }
+
+        _isAtDefaultRotation = false;
     }
 
+    // Bolt: Optimized - Added _isAtDefaultRotation guard and epsilon snapping to avoid infinite Slerp
     protected void ResetToDefaultRotation()
     {
+        if (_isAtDefaultRotation) return;
+
         body.rotation = Quaternion.Slerp(body.rotation, initialBodyRotation, maxRotationSpeed * Time.deltaTime);
         joint.localRotation = Quaternion.Slerp(joint.localRotation, initialJointLocalRotation, maxRotationSpeed * Time.deltaTime);
+
+        // Check if we've converged (using 1e-4f as epsilon for Dot product stability)
+        bool bodyAtRest = Mathf.Abs(Quaternion.Dot(body.rotation, initialBodyRotation)) > 0.9999f;
+        bool jointAtRest = Mathf.Abs(Quaternion.Dot(joint.localRotation, initialJointLocalRotation)) > 0.9999f;
+
+        if (bodyAtRest && jointAtRest)
+        {
+            body.rotation = initialBodyRotation;
+            joint.localRotation = initialJointLocalRotation;
+            _isAtDefaultRotation = true;
+        }
     }
 }
