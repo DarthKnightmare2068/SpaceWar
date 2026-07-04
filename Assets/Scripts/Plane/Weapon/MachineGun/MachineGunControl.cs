@@ -67,11 +67,10 @@ public class MachineGunControl : MonoBehaviour
             InitializeBulletPool();
         }
 
-        bool inFireRange = weaponManager.IsTargetInRange(weaponManager.machineGunFireRange);
-
         if (Input.GetMouseButton(0) && Time.time >= nextFireTime)
         {
-            if (inFireRange && !weaponManager.isReloading)
+            // Bolt: Optimized - check range only when attempting to fire
+            if (weaponManager.IsTargetInRange(weaponManager.machineGunFireRange) && !weaponManager.isReloading)
             {
                 if (weaponManager.CanFireBullet())
                 {
