@@ -112,38 +112,42 @@ public class TurretControl : MonoBehaviour, IHittable, IHasHealth, ITargetable
     public Transform Transform => transform;
     public bool IsAlive => currentHP > 0 && gameObject.activeInHierarchy;
 
-    public void ControlTurret(float howCloseToEnemySqr)
+    // Bolt: Optimized - accepts cached target position to minimize native bridge calls
+    public void ControlTurret(Vector3 targetPos, float howCloseToEnemySqr)
     {
         if (!gameObject.activeInHierarchy) return;
-        if (CurrentTarget != null)
+
+        directionToEnemy = targetPos - gunBarrel.position;
+        // Bolt: Optimized using sqrMagnitude
+        float sqrDistanceToEnemy = directionToEnemy.sqrMagnitude;
+
+        if (sqrDistanceToEnemy < howCloseToEnemySqr)
         {
-            directionToEnemy = CurrentTarget.position - gunBarrel.position;
-            // Bolt: Optimized using sqrMagnitude
-            float sqrDistanceToEnemy = directionToEnemy.sqrMagnitude;
+            Quaternion targetRotation = Quaternion.LookRotation(directionToEnemy);
+            Vector3 targetEuler = targetRotation.eulerAngles;
 
-            if (sqrDistanceToEnemy < howCloseToEnemySqr)
+            // Bolt: Optimized - derive both rotations from cached euler to avoid redundant native property access
+            Quaternion jointTarget = Quaternion.Euler(targetEuler.x, targetEuler.y, 90f);
+            Quaternion bodyTarget = Quaternion.Euler(0f, targetEuler.y, 0f);
+
+            if (trackPlayerInstantly)
             {
-                Quaternion targetRotation = Quaternion.LookRotation(directionToEnemy);
+                joint.rotation = jointTarget;
+                body.rotation = bodyTarget;
+            }
+            else
+            {
+                float step = maxRotationSpeed * Time.deltaTime;
+                joint.rotation = Quaternion.Slerp(joint.rotation, jointTarget, step);
+                body.rotation = Quaternion.Slerp(body.rotation, bodyTarget, step);
+            }
 
-                Quaternion finalRotation = Quaternion.Euler(targetRotation.eulerAngles.x, targetRotation.eulerAngles.y, 90);
-                if (trackPlayerInstantly)
-                {
-                    joint.rotation = finalRotation;
-                    body.rotation = Quaternion.Euler(0, targetRotation.eulerAngles.y, 0);
-                }
-                else
-                {
-                    joint.rotation = Quaternion.Slerp(joint.rotation, finalRotation, maxRotationSpeed * Time.deltaTime);
-                    body.rotation = Quaternion.Slerp(body.rotation, Quaternion.Euler(0, targetRotation.eulerAngles.y, 0), maxRotationSpeed * Time.deltaTime);
-                }
+            // Bolt: Removed redundant gunBarrel.LookAt - the Slerp/Euler assignments already align the turret.
 
-                gunBarrel.LookAt(CurrentTarget.position);
-
-                if (Time.time >= nextFire)
-                {
-                    nextFire = Time.time + fireRate;
-                    Shoot();
-                }
+            if (Time.time >= nextFire)
+            {
+                nextFire = Time.time + fireRate;
+                Shoot();
             }
         }
     }
